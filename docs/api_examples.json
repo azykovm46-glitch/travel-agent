@@ -1,0 +1,2892 @@
+[
+  {
+    "name": "clarify",
+    "note": "Размытый запрос: агент задаёт ≤2 вопроса с кнопками-вариантами",
+    "request": {
+      "session_id": null,
+      "message": "хочу куда-нибудь отдохнуть",
+      "action": null
+    },
+    "response": {
+      "session_id": "bc05c0fb5d43",
+      "stage": "clarify",
+      "message": "Чтобы подобрать варианты, уточню: Откуда отправляетесь? Когда примерно и на сколько ночей?",
+      "questions": [
+        {
+          "slot": "origin",
+          "text": "Откуда отправляетесь?",
+          "options": [
+            {
+              "label": "Москва",
+              "text": "из Москвы",
+              "action": null
+            },
+            {
+              "label": "Санкт-Петербург",
+              "text": "из Санкт-Петербурга",
+              "action": null
+            },
+            {
+              "label": "Казань",
+              "text": "из Казани",
+              "action": null
+            },
+            {
+              "label": "Екатеринбург",
+              "text": "из Екатеринбурга",
+              "action": null
+            }
+          ]
+        },
+        {
+          "slot": "dates",
+          "text": "Когда примерно и на сколько ночей?",
+          "options": [
+            {
+              "label": "В ноябре, 7 ночей",
+              "text": "в ноябре на 7 ночей",
+              "action": null
+            },
+            {
+              "label": "В декабре, 10 ночей",
+              "text": "в декабре на 10 ночей",
+              "action": null
+            },
+            {
+              "label": "Выходные в следующем месяце",
+              "text": "в ноябре на 2 ночи",
+              "action": null
+            }
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "type": "assumptions",
+          "data": {
+            "items": [
+              {
+                "field": "budget",
+                "value": "средний ценовой уровень",
+                "reason": "бюджет не назван",
+                "source": "default"
+              },
+              {
+                "field": "nights",
+                "value": "7 ночей",
+                "reason": "длительность не названа",
+                "source": "default"
+              }
+            ],
+            "weights": {
+              "price": 0.3,
+              "travel_time": 0.15,
+              "location": 0.15,
+              "rating": 0.15,
+              "cancellation": 0.1,
+              "meals": 0.15
+            },
+            "must_have": [],
+            "constraints": {
+              "max_travel_hours": null,
+              "direct_only": false,
+              "transport": "any",
+              "max_beach_m": null
+            }
+          }
+        }
+      ],
+      "quick_replies": [],
+      "diff": [],
+      "trace": [
+        {
+          "step": "understand",
+          "detail": "правила (LLM выключена): без новых данных",
+          "ms": 1
+        },
+        {
+          "step": "clarify",
+          "detail": "не хватает: origin, dates, travelers",
+          "ms": 0
+        }
+      ],
+      "state": {
+        "origin_city": null,
+        "destination_hint": null,
+        "trip_type": [],
+        "dates": {
+          "start": null,
+          "end": null,
+          "month": null,
+          "nights": null,
+          "flexibility_days": 0
+        },
+        "travelers": {
+          "adults": 1,
+          "children_ages": [],
+          "pets": 0
+        },
+        "budget": {
+          "total_rub": null,
+          "level": null
+        },
+        "constraints": {
+          "max_travel_hours": null,
+          "direct_only": false,
+          "transport": "any",
+          "max_beach_m": null
+        },
+        "must_have": [],
+        "weights": {
+          "price": 0.3,
+          "travel_time": 0.15,
+          "location": 0.15,
+          "rating": 0.15,
+          "cancellation": 0.1,
+          "meals": 0.15
+        },
+        "near": null,
+        "assumptions": [
+          {
+            "field": "budget",
+            "value": "средний ценовой уровень",
+            "reason": "бюджет не назван",
+            "source": "default"
+          },
+          {
+            "field": "nights",
+            "value": "7 ночей",
+            "reason": "длительность не названа",
+            "source": "default"
+          }
+        ],
+        "selection": {
+          "destination_id": null,
+          "outbound_id": null,
+          "return_id": null,
+          "hotel_id": null,
+          "transfer_in_id": null,
+          "transfer_out_id": null,
+          "locked": []
+        },
+        "plan": null,
+        "stage": "clarify",
+        "confirmed": [],
+        "clarify_rounds": 1,
+        "order": null,
+        "user_id": null
+      }
+    }
+  },
+  {
+    "name": "inspire",
+    "note": "Запрос без конкретного места: 3 карточки направлений + допущения",
+    "request": {
+      "session_id": null,
+      "message": "хочу к тёплому морю в ноябре, недорого, с ребёнком 5 лет, без долгих перелётов, из Москвы",
+      "action": null
+    },
+    "response": {
+      "session_id": "4c40a2841ea2",
+      "stage": "inspire",
+      "message": "Под запрос (к теплому морю, из города Москва, 14.11–21.11, 2 взрослых + дети 5 лет, недорого) подходят: Анталья, Пхукет, Шарм-эль-Шейх. Лучше всего — Анталья: подходит под тип отдыха, лететь около 4.0 ч, ориентировочно 234 000 ₽ на всех. Выберите направление — соберу поездку целиком.",
+      "questions": [],
+      "cards": [
+        {
+          "type": "destination",
+          "data": {
+            "id": "antalya",
+            "name": "Анталья",
+            "country": "Турция",
+            "tags": [
+              "sea",
+              "all_inclusive"
+            ],
+            "visa": "не нужна (до 60 дней)",
+            "air_temp": 21,
+            "water_temp": 21,
+            "flight_hours": 4.0,
+            "train_hours": null,
+            "est_total_rub": 234000,
+            "est_night_rub": 9000,
+            "ski_season": false,
+            "data_source": "mock",
+            "score": 0.644,
+            "reasons": [
+              "подходит под тип отдыха",
+              "лететь около 4.0 ч"
+            ],
+            "tradeoffs": [
+              "вода прохладная, около 21°C"
+            ],
+            "rank": 1,
+            "explanation": {
+              "why": [
+                "подходит под тип отдыха",
+                "лететь около 4.0 ч"
+              ],
+              "tradeoffs": [
+                "вода прохладная, около 21°C"
+              ],
+              "risks": [
+                "виза: не нужна (до 60 дней)"
+              ]
+            }
+          }
+        },
+        {
+          "type": "destination",
+          "data": {
+            "id": "phuket",
+            "name": "Пхукет",
+            "country": "Таиланд",
+            "tags": [
+              "sea",
+              "nature"
+            ],
+            "visa": "не нужна (до 30 дней)",
+            "air_temp": 31,
+            "water_temp": 29,
+            "flight_hours": 9.5,
+            "train_hours": null,
+            "est_total_rub": 361500,
+            "est_night_rub": 7500,
+            "ski_season": false,
+            "data_source": "mock",
+            "score": 0.4,
+            "reasons": [
+              "подходит под тип отдыха",
+              "вода около 29°C"
+            ],
+            "tradeoffs": [
+              "дорога 9.5 ч — дольше желаемых 4 ч"
+            ],
+            "rank": 2,
+            "explanation": {
+              "why": [
+                "подходит под тип отдыха",
+                "вода около 29°C"
+              ],
+              "tradeoffs": [
+                "дорога 9.5 ч — дольше желаемых 4 ч"
+              ],
+              "risks": [
+                "виза: не нужна (до 30 дней)"
+              ]
+            }
+          }
+        },
+        {
+          "type": "destination",
+          "data": {
+            "id": "sharm",
+            "name": "Шарм-эль-Шейх",
+            "country": "Египет",
+            "tags": [
+              "sea",
+              "all_inclusive",
+              "diving"
+            ],
+            "visa": "штамп в аэропорту",
+            "air_temp": 27,
+            "water_temp": 25,
+            "flight_hours": 5.0,
+            "train_hours": null,
+            "est_total_rub": 247000,
+            "est_night_rub": 8000,
+            "ski_season": false,
+            "data_source": "mock",
+            "score": 0.362,
+            "reasons": [
+              "подходит под тип отдыха",
+              "вода около 25°C"
+            ],
+            "tradeoffs": [
+              "дорога 5.0 ч — дольше желаемых 4 ч"
+            ],
+            "rank": 3,
+            "explanation": {
+              "why": [
+                "подходит под тип отдыха",
+                "вода около 25°C"
+              ],
+              "tradeoffs": [
+                "дорога 5.0 ч — дольше желаемых 4 ч"
+              ],
+              "risks": [
+                "виза: штамп в аэропорту"
+              ]
+            }
+          }
+        },
+        {
+          "type": "assumptions",
+          "data": {
+            "items": [
+              {
+                "field": "weights",
+                "value": "цена — главный критерий",
+                "reason": "вы просили недорого",
+                "source": "inferred"
+              },
+              {
+                "field": "adults",
+                "value": "2 взрослых",
+                "reason": "с ребёнком обычно едут двое взрослых",
+                "source": "default"
+              },
+              {
+                "field": "kids",
+                "value": "семейный номер, детское меню в приоритете",
+                "reason": "едет ребёнок (5 лет)",
+                "source": "inferred"
+              },
+              {
+                "field": "nights",
+                "value": "7 ночей",
+                "reason": "длительность не названа",
+                "source": "default"
+              },
+              {
+                "field": "dates",
+                "value": "14.11 – 21.11",
+                "reason": "назван только месяц — взяли ближайшие выходные после 10-го",
+                "source": "default"
+              }
+            ],
+            "weights": {
+              "price": 0.45,
+              "travel_time": 0.15,
+              "location": 0.15,
+              "rating": 0.15,
+              "cancellation": 0.1,
+              "meals": 0.15
+            },
+            "must_have": [],
+            "constraints": {
+              "max_travel_hours": 4.0,
+              "direct_only": false,
+              "transport": "any",
+              "max_beach_m": null
+            }
+          }
+        }
+      ],
+      "quick_replies": [
+        {
+          "label": "Выбрать: Анталья",
+          "text": null,
+          "action": {
+            "type": "select_destination",
+            "id": "antalya"
+          }
+        },
+        {
+          "label": "Выбрать: Пхукет",
+          "text": null,
+          "action": {
+            "type": "select_destination",
+            "id": "phuket"
+          }
+        },
+        {
+          "label": "Выбрать: Шарм-эль-Шейх",
+          "text": null,
+          "action": {
+            "type": "select_destination",
+            "id": "sharm"
+          }
+        }
+      ],
+      "diff": [],
+      "trace": [
+        {
+          "step": "understand",
+          "detail": "правила (LLM выключена): origin_city, trip_type, destination_hint, month, children_ages, budget_level, max_travel_hours",
+          "ms": 0
+        },
+        {
+          "step": "search_destinations",
+          "detail": "найдено 13 направлений",
+          "ms": 0
+        }
+      ],
+      "state": {
+        "origin_city": "Москва",
+        "destination_hint": "к теплому морю",
+        "trip_type": [
+          "sea"
+        ],
+        "dates": {
+          "start": null,
+          "end": null,
+          "month": 11,
+          "nights": null,
+          "flexibility_days": 0
+        },
+        "travelers": {
+          "adults": 2,
+          "children_ages": [
+            5
+          ],
+          "pets": 0
+        },
+        "budget": {
+          "total_rub": null,
+          "level": "low"
+        },
+        "constraints": {
+          "max_travel_hours": 4.0,
+          "direct_only": false,
+          "transport": "any",
+          "max_beach_m": null
+        },
+        "must_have": [],
+        "weights": {
+          "price": 0.45,
+          "travel_time": 0.15,
+          "location": 0.15,
+          "rating": 0.15,
+          "cancellation": 0.1,
+          "meals": 0.15
+        },
+        "near": null,
+        "assumptions": [
+          {
+            "field": "weights",
+            "value": "цена — главный критерий",
+            "reason": "вы просили недорого",
+            "source": "inferred"
+          },
+          {
+            "field": "adults",
+            "value": "2 взрослых",
+            "reason": "с ребёнком обычно едут двое взрослых",
+            "source": "default"
+          },
+          {
+            "field": "kids",
+            "value": "семейный номер, детское меню в приоритете",
+            "reason": "едет ребёнок (5 лет)",
+            "source": "inferred"
+          },
+          {
+            "field": "nights",
+            "value": "7 ночей",
+            "reason": "длительность не названа",
+            "source": "default"
+          },
+          {
+            "field": "dates",
+            "value": "14.11 – 21.11",
+            "reason": "назван только месяц — взяли ближайшие выходные после 10-го",
+            "source": "default"
+          }
+        ],
+        "selection": {
+          "destination_id": null,
+          "outbound_id": null,
+          "return_id": null,
+          "hotel_id": null,
+          "transfer_in_id": null,
+          "transfer_out_id": null,
+          "locked": []
+        },
+        "plan": null,
+        "stage": "inspire",
+        "confirmed": [
+          "origin",
+          "dates",
+          "travelers"
+        ],
+        "clarify_rounds": 0,
+        "order": null,
+        "user_id": null
+      }
+    }
+  },
+  {
+    "name": "plan",
+    "note": "Выбор направления кнопкой: план, сравнение отелей и рейсов, проблемы стыковок",
+    "request": {
+      "session_id": "4c40a2841ea2",
+      "message": null,
+      "action": {
+        "type": "select_destination",
+        "id": "antalya"
+      }
+    },
+    "response": {
+      "session_id": "4c40a2841ea2",
+      "stage": "plan",
+      "message": "Поездка — Анталья, 14.11–21.11: рейс S7 (4.0 ч, без пересадок), отель «Ривьера 3*» — один из самых выгодных среди подходящих, 14 км от аэропорта. Итого 175 375 ₽.",
+      "questions": [],
+      "cards": [
+        {
+          "type": "plan",
+          "data": {
+            "destination": {
+              "id": "antalya",
+              "name": "Анталья",
+              "country": "Турция"
+            },
+            "check_in": "2026-11-14",
+            "check_out": "2026-11-21",
+            "nights": 7,
+            "travelers": {
+              "adults": 2,
+              "children_ages": [
+                5
+              ],
+              "pets": 0
+            },
+            "outbound": {
+              "id": "fl-out-antalya-2026-11-14-3",
+              "mode": "plane",
+              "carrier": "S7",
+              "from": "Москва",
+              "to": "Анталья",
+              "departure": "2026-11-14T09:15",
+              "arrival": "2026-11-14T13:15",
+              "duration_h": 4.0,
+              "stops": 0,
+              "baggage": true,
+              "price_rub": 48426,
+              "data_source": "mock",
+              "score": 0.55,
+              "breakdown": {
+                "price": 0.0,
+                "travel_time": 1.0,
+                "comfort": 1.0
+              },
+              "too_long": false
+            },
+            "return": {
+              "id": "fl-back-antalya-2026-11-21-2",
+              "mode": "plane",
+              "carrier": "Аэрофлот",
+              "from": "Анталья",
+              "to": "Москва",
+              "departure": "2026-11-21T06:45",
+              "arrival": "2026-11-21T10:45",
+              "duration_h": 4.0,
+              "stops": 0,
+              "baggage": false,
+              "price_rub": 50202,
+              "data_source": "mock",
+              "score": 0.648,
+              "breakdown": {
+                "price": 0.31,
+                "travel_time": 1.0,
+                "comfort": 0.8
+              },
+              "too_long": false
+            },
+            "hotel": {
+              "id": "h-antalya-3",
+              "name": "Ривьера 3*",
+              "dest_id": "antalya",
+              "stars": 3,
+              "price_per_night_rub": 10721,
+              "price_total_rub": 75047,
+              "nights": 7,
+              "meals": "RO",
+              "free_cancellation": true,
+              "cancellation_deadline_days": 1,
+              "max_guests": 3,
+              "family_rooms": true,
+              "pets_allowed": true,
+              "kids_club": false,
+              "beach_m": 300,
+              "center_km": 6.6,
+              "airport_km": 14,
+              "check_in": "15:00",
+              "check_out": "12:00",
+              "early_checkin": false,
+              "rating": 8.6,
+              "reviews": 737,
+              "review_pros": [
+                "близко к морю",
+                "чисто"
+              ],
+              "review_cons": [
+                "шумно вечером"
+              ],
+              "data_source": "mock",
+              "fits_guests": true,
+              "score": 0.843,
+              "breakdown": {
+                "price": 1.0,
+                "travel_time": 0.78,
+                "location": 0.78,
+                "rating": 0.7,
+                "cancellation": 1.0,
+                "meals": 0.15
+              },
+              "explanation": {
+                "why": [
+                  "один из самых выгодных среди подходящих",
+                  "14 км от аэропорта",
+                  "300 м до пляжа",
+                  "есть семейные номера",
+                  "гости хвалят: близко к морю, чисто"
+                ],
+                "tradeoffs": [
+                  "без питания"
+                ],
+                "risks": [
+                  "в отзывах жалуются: шумно вечером"
+                ]
+              }
+            },
+            "transfer_in": {
+              "id": "tf-antalya-airport-hotel:h-antalya-3-taxi",
+              "kind": "taxi",
+              "minutes": 32,
+              "price_rub": 850,
+              "pets_ok": true,
+              "from": "airport",
+              "to": "hotel:h-antalya-3",
+              "when": "2026-11-14T13:15",
+              "data_source": "mock"
+            },
+            "transfer_out": {
+              "id": "tf-antalya-hotel:h-antalya-3-airport-taxi",
+              "kind": "taxi",
+              "minutes": 32,
+              "price_rub": 850,
+              "pets_ok": true,
+              "from": "hotel:h-antalya-3",
+              "to": "airport",
+              "when": "2026-11-21T06:45",
+              "data_source": "mock"
+            },
+            "total_rub": 175375,
+            "price_breakdown": {
+              "transport": 98628,
+              "hotel": 75047,
+              "transfers": 1700
+            },
+            "data_source": "mock",
+            "issues": []
+          }
+        },
+        {
+          "type": "comparison",
+          "data": {
+            "kind": "hotel",
+            "weights": {
+              "price": 0.391304347826087,
+              "travel_time": 0.13043478260869565,
+              "location": 0.13043478260869565,
+              "rating": 0.13043478260869565,
+              "cancellation": 0.08695652173913045,
+              "meals": 0.13043478260869565
+            },
+            "items": [
+              {
+                "id": "h-antalya-3",
+                "name": "Ривьера 3*",
+                "dest_id": "antalya",
+                "stars": 3,
+                "price_per_night_rub": 10721,
+                "price_total_rub": 75047,
+                "nights": 7,
+                "meals": "RO",
+                "free_cancellation": true,
+                "cancellation_deadline_days": 1,
+                "max_guests": 3,
+                "family_rooms": true,
+                "pets_allowed": true,
+                "kids_club": false,
+                "beach_m": 300,
+                "center_km": 6.6,
+                "airport_km": 14,
+                "check_in": "15:00",
+                "check_out": "12:00",
+                "early_checkin": false,
+                "rating": 8.6,
+                "reviews": 737,
+                "review_pros": [
+                  "близко к морю",
+                  "чисто"
+                ],
+                "review_cons": [
+                  "шумно вечером"
+                ],
+                "data_source": "mock",
+                "fits_guests": true,
+                "score": 0.843,
+                "breakdown": {
+                  "price": 1.0,
+                  "travel_time": 0.78,
+                  "location": 0.78,
+                  "rating": 0.7,
+                  "cancellation": 1.0,
+                  "meals": 0.15
+                },
+                "explanation": {
+                  "why": [
+                    "один из самых выгодных среди подходящих",
+                    "14 км от аэропорта",
+                    "300 м до пляжа",
+                    "есть семейные номера",
+                    "гости хвалят: близко к морю, чисто"
+                  ],
+                  "tradeoffs": [
+                    "без питания"
+                  ],
+                  "risks": [
+                    "в отзывах жалуются: шумно вечером"
+                  ]
+                },
+                "selected": true
+              },
+              {
+                "id": "h-antalya-8",
+                "name": "Солнечный берег 5*",
+                "dest_id": "antalya",
+                "stars": 5,
+                "price_per_night_rub": 19654,
+                "price_total_rub": 137578,
+                "nights": 7,
+                "meals": "HB",
+                "free_cancellation": true,
+                "cancellation_deadline_days": 3,
+                "max_guests": 3,
+                "family_rooms": false,
+                "pets_allowed": false,
+                "kids_club": true,
+                "beach_m": 50,
+                "center_km": 4.0,
+                "airport_km": 17,
+                "check_in": "14:00",
+                "check_out": "12:00",
+                "early_checkin": true,
+                "rating": 9.7,
+                "reviews": 1062,
+                "review_pros": [
+                  "приветливый персонал",
+                  "близко к морю"
+                ],
+                "review_cons": [
+                  "маленькие номера"
+                ],
+                "data_source": "mock",
+                "fits_guests": true,
+                "score": 0.841,
+                "breakdown": {
+                  "price": 0.6,
+                  "travel_time": 0.7,
+                  "location": 1.0,
+                  "rating": 1.0,
+                  "cancellation": 1.0,
+                  "meals": 0.9
+                },
+                "explanation": {
+                  "why": [
+                    "один из самых выгодных среди подходящих",
+                    "50 м до пляжа",
+                    "оценка 9.7 по 1062 отзывам",
+                    "есть семейные номера и детский клуб",
+                    "гости хвалят: приветливый персонал, близко к морю"
+                  ],
+                  "tradeoffs": [
+                    "на 62 531 ₽ дороже самого дешёвого подходящего"
+                  ],
+                  "risks": [
+                    "в отзывах жалуются: маленькие номера"
+                  ]
+                },
+                "selected": false
+              },
+              {
+                "id": "h-antalya-6",
+                "name": "Кипарис 4*",
+                "dest_id": "antalya",
+                "stars": 4,
+                "price_per_night_rub": 12910,
+                "price_total_rub": 90370,
+                "nights": 7,
+                "meals": "HB",
+                "free_cancellation": true,
+                "cancellation_deadline_days": 3,
+                "max_guests": 4,
+                "family_rooms": true,
+                "pets_allowed": false,
+                "kids_club": false,
+                "beach_m": 1200,
+                "center_km": 1.4,
+                "airport_km": 8,
+                "check_in": "15:00",
+                "check_out": "12:00",
+                "early_checkin": true,
+                "rating": 8.9,
+                "reviews": 1928,
+                "review_pros": [
+                  "близко к морю",
+                  "вкусные завтраки"
+                ],
+                "review_cons": [
+                  "медленный Wi-Fi"
+                ],
+                "data_source": "mock",
+                "fits_guests": true,
+                "score": 0.83,
+                "breakdown": {
+                  "price": 0.9,
+                  "travel_time": 0.93,
+                  "location": 0.0,
+                  "rating": 0.78,
+                  "cancellation": 1.0,
+                  "meals": 0.9
+                },
+                "explanation": {
+                  "why": [
+                    "один из самых выгодных среди подходящих",
+                    "8 км от аэропорта",
+                    "завтрак и ужин",
+                    "есть семейные номера",
+                    "гости хвалят: близко к морю, вкусные завтраки"
+                  ],
+                  "tradeoffs": [
+                    "до пляжа 1200 м",
+                    "на 15 323 ₽ дороже самого дешёвого подходящего"
+                  ],
+                  "risks": [
+                    "в отзывах жалуются: медленный Wi-Fi"
+                  ]
+                },
+                "selected": false
+              }
+            ]
+          }
+        },
+        {
+          "type": "comparison",
+          "data": {
+            "kind": "transport",
+            "direction": "out",
+            "items": [
+              {
+                "id": "fl-out-antalya-2026-11-14-0",
+                "mode": "plane",
+                "carrier": "Уральские авиалинии",
+                "from": "Москва",
+                "to": "Анталья",
+                "departure": "2026-11-14T06:00",
+                "arrival": "2026-11-14T10:00",
+                "duration_h": 4.0,
+                "stops": 0,
+                "baggage": false,
+                "price_rub": 46431,
+                "data_source": "mock",
+                "score": 0.631,
+                "breakdown": {
+                  "price": 0.27,
+                  "travel_time": 1.0,
+                  "comfort": 0.8
+                },
+                "too_long": false,
+                "explanation": {
+                  "why": [
+                    "быстро: 4.0 ч в пути",
+                    "без пересадок"
+                  ],
+                  "tradeoffs": [
+                    "багаж оплачивается отдельно"
+                  ],
+                  "risks": []
+                },
+                "selected": false
+              },
+              {
+                "id": "fl-out-antalya-2026-11-14-1",
+                "mode": "plane",
+                "carrier": "Победа",
+                "from": "Москва",
+                "to": "Анталья",
+                "departure": "2026-11-14T21:00",
+                "arrival": "2026-11-15T01:00",
+                "duration_h": 4.0,
+                "stops": 0,
+                "baggage": false,
+                "price_rub": 47349,
+                "data_source": "mock",
+                "score": 0.575,
+                "breakdown": {
+                  "price": 0.14,
+                  "travel_time": 1.0,
+                  "comfort": 0.8
+                },
+                "too_long": false,
+                "explanation": {
+                  "why": [
+                    "быстро: 4.0 ч в пути",
+                    "без пересадок"
+                  ],
+                  "tradeoffs": [
+                    "багаж оплачивается отдельно"
+                  ],
+                  "risks": []
+                },
+                "selected": false
+              },
+              {
+                "id": "fl-out-antalya-2026-11-14-3",
+                "mode": "plane",
+                "carrier": "S7",
+                "from": "Москва",
+                "to": "Анталья",
+                "departure": "2026-11-14T09:15",
+                "arrival": "2026-11-14T13:15",
+                "duration_h": 4.0,
+                "stops": 0,
+                "baggage": true,
+                "price_rub": 48426,
+                "data_source": "mock",
+                "score": 0.55,
+                "breakdown": {
+                  "price": 0.0,
+                  "travel_time": 1.0,
+                  "comfort": 1.0
+                },
+                "too_long": false,
+                "explanation": {
+                  "why": [
+                    "быстро: 4.0 ч в пути",
+                    "без пересадок"
+                  ],
+                  "tradeoffs": [],
+                  "risks": []
+                },
+                "selected": true
+              }
+            ]
+          }
+        },
+        {
+          "type": "assumptions",
+          "data": {
+            "items": [
+              {
+                "field": "weights",
+                "value": "цена — главный критерий",
+                "reason": "вы просили недорого",
+                "source": "inferred"
+              },
+              {
+                "field": "adults",
+                "value": "2 взрослых",
+                "reason": "с ребёнком обычно едут двое взрослых",
+                "source": "default"
+              },
+              {
+                "field": "kids",
+                "value": "семейный номер, детское меню в приоритете",
+                "reason": "едет ребёнок (5 лет)",
+                "source": "inferred"
+              },
+              {
+                "field": "nights",
+                "value": "7 ночей",
+                "reason": "длительность не названа",
+                "source": "default"
+              },
+              {
+                "field": "dates",
+                "value": "14.11 – 21.11",
+                "reason": "назван только месяц — взяли ближайшие выходные после 10-го",
+                "source": "default"
+              }
+            ],
+            "weights": {
+              "price": 0.45,
+              "travel_time": 0.15,
+              "location": 0.15,
+              "rating": 0.15,
+              "cancellation": 0.1,
+              "meals": 0.15
+            },
+            "must_have": [],
+            "constraints": {
+              "max_travel_hours": 4.0,
+              "direct_only": false,
+              "transport": "any",
+              "max_beach_m": null
+            }
+          }
+        }
+      ],
+      "quick_replies": [
+        {
+          "label": "Оформить за 175 375 ₽",
+          "text": null,
+          "action": {
+            "type": "checkout"
+          }
+        },
+        {
+          "label": "Отель: Солнечный берег 5*",
+          "text": null,
+          "action": {
+            "type": "select_hotel",
+            "id": "h-antalya-8"
+          }
+        },
+        {
+          "label": "Отель: Кипарис 4*",
+          "text": null,
+          "action": {
+            "type": "select_hotel",
+            "id": "h-antalya-6"
+          }
+        },
+        {
+          "label": "На 2 дня позже",
+          "text": "а если на 2 дня позже?",
+          "action": null
+        },
+        {
+          "label": "Дешевле",
+          "text": "бюджет меньше на 20%",
+          "action": null
+        }
+      ],
+      "diff": [],
+      "trace": [
+        {
+          "step": "select",
+          "detail": "направление: antalya",
+          "ms": 0
+        },
+        {
+          "step": "search_transport",
+          "detail": "туда 4, обратно 4 вариантов",
+          "ms": 0
+        },
+        {
+          "step": "search_hotels",
+          "detail": "14 отелей",
+          "ms": 0
+        },
+        {
+          "step": "score",
+          "detail": "отелей прошло фильтры 14, отсеяно 0",
+          "ms": 0
+        },
+        {
+          "step": "assemble",
+          "detail": "проверено 96 комбинаций, без ошибок стыковки 96, в бюджет укладываются 96",
+          "ms": 1
+        },
+        {
+          "step": "validate",
+          "detail": "без замечаний",
+          "ms": 0
+        }
+      ],
+      "state": {
+        "origin_city": "Москва",
+        "destination_hint": "к теплому морю",
+        "trip_type": [
+          "sea"
+        ],
+        "dates": {
+          "start": null,
+          "end": null,
+          "month": 11,
+          "nights": null,
+          "flexibility_days": 0
+        },
+        "travelers": {
+          "adults": 2,
+          "children_ages": [
+            5
+          ],
+          "pets": 0
+        },
+        "budget": {
+          "total_rub": null,
+          "level": "low"
+        },
+        "constraints": {
+          "max_travel_hours": 4.0,
+          "direct_only": false,
+          "transport": "any",
+          "max_beach_m": null
+        },
+        "must_have": [],
+        "weights": {
+          "price": 0.45,
+          "travel_time": 0.15,
+          "location": 0.15,
+          "rating": 0.15,
+          "cancellation": 0.1,
+          "meals": 0.15
+        },
+        "near": null,
+        "assumptions": [
+          {
+            "field": "weights",
+            "value": "цена — главный критерий",
+            "reason": "вы просили недорого",
+            "source": "inferred"
+          },
+          {
+            "field": "adults",
+            "value": "2 взрослых",
+            "reason": "с ребёнком обычно едут двое взрослых",
+            "source": "default"
+          },
+          {
+            "field": "kids",
+            "value": "семейный номер, детское меню в приоритете",
+            "reason": "едет ребёнок (5 лет)",
+            "source": "inferred"
+          },
+          {
+            "field": "nights",
+            "value": "7 ночей",
+            "reason": "длительность не названа",
+            "source": "default"
+          },
+          {
+            "field": "dates",
+            "value": "14.11 – 21.11",
+            "reason": "назван только месяц — взяли ближайшие выходные после 10-го",
+            "source": "default"
+          }
+        ],
+        "selection": {
+          "destination_id": "antalya",
+          "outbound_id": "fl-out-antalya-2026-11-14-3",
+          "return_id": "fl-back-antalya-2026-11-21-2",
+          "hotel_id": "h-antalya-3",
+          "transfer_in_id": "tf-antalya-airport-hotel:h-antalya-3-taxi",
+          "transfer_out_id": "tf-antalya-hotel:h-antalya-3-airport-taxi",
+          "locked": [
+            "destination_id"
+          ]
+        },
+        "plan": {
+          "destination": {
+            "id": "antalya",
+            "name": "Анталья",
+            "country": "Турция"
+          },
+          "check_in": "2026-11-14",
+          "check_out": "2026-11-21",
+          "nights": 7,
+          "travelers": {
+            "adults": 2,
+            "children_ages": [
+              5
+            ],
+            "pets": 0
+          },
+          "outbound": {
+            "id": "fl-out-antalya-2026-11-14-3",
+            "mode": "plane",
+            "carrier": "S7",
+            "from": "Москва",
+            "to": "Анталья",
+            "departure": "2026-11-14T09:15",
+            "arrival": "2026-11-14T13:15",
+            "duration_h": 4.0,
+            "stops": 0,
+            "baggage": true,
+            "price_rub": 48426,
+            "data_source": "mock",
+            "score": 0.55,
+            "breakdown": {
+              "price": 0.0,
+              "travel_time": 1.0,
+              "comfort": 1.0
+            },
+            "too_long": false
+          },
+          "return": {
+            "id": "fl-back-antalya-2026-11-21-2",
+            "mode": "plane",
+            "carrier": "Аэрофлот",
+            "from": "Анталья",
+            "to": "Москва",
+            "departure": "2026-11-21T06:45",
+            "arrival": "2026-11-21T10:45",
+            "duration_h": 4.0,
+            "stops": 0,
+            "baggage": false,
+            "price_rub": 50202,
+            "data_source": "mock",
+            "score": 0.648,
+            "breakdown": {
+              "price": 0.31,
+              "travel_time": 1.0,
+              "comfort": 0.8
+            },
+            "too_long": false
+          },
+          "hotel": {
+            "id": "h-antalya-3",
+            "name": "Ривьера 3*",
+            "dest_id": "antalya",
+            "stars": 3,
+            "price_per_night_rub": 10721,
+            "price_total_rub": 75047,
+            "nights": 7,
+            "meals": "RO",
+            "free_cancellation": true,
+            "cancellation_deadline_days": 1,
+            "max_guests": 3,
+            "family_rooms": true,
+            "pets_allowed": true,
+            "kids_club": false,
+            "beach_m": 300,
+            "center_km": 6.6,
+            "airport_km": 14,
+            "check_in": "15:00",
+            "check_out": "12:00",
+            "early_checkin": false,
+            "rating": 8.6,
+            "reviews": 737,
+            "review_pros": [
+              "близко к морю",
+              "чисто"
+            ],
+            "review_cons": [
+              "шумно вечером"
+            ],
+            "data_source": "mock",
+            "fits_guests": true,
+            "score": 0.843,
+            "breakdown": {
+              "price": 1.0,
+              "travel_time": 0.78,
+              "location": 0.78,
+              "rating": 0.7,
+              "cancellation": 1.0,
+              "meals": 0.15
+            },
+            "explanation": {
+              "why": [
+                "один из самых выгодных среди подходящих",
+                "14 км от аэропорта",
+                "300 м до пляжа",
+                "есть семейные номера",
+                "гости хвалят: близко к морю, чисто"
+              ],
+              "tradeoffs": [
+                "без питания"
+              ],
+              "risks": [
+                "в отзывах жалуются: шумно вечером"
+              ]
+            }
+          },
+          "transfer_in": {
+            "id": "tf-antalya-airport-hotel:h-antalya-3-taxi",
+            "kind": "taxi",
+            "minutes": 32,
+            "price_rub": 850,
+            "pets_ok": true,
+            "from": "airport",
+            "to": "hotel:h-antalya-3",
+            "when": "2026-11-14T13:15",
+            "data_source": "mock"
+          },
+          "transfer_out": {
+            "id": "tf-antalya-hotel:h-antalya-3-airport-taxi",
+            "kind": "taxi",
+            "minutes": 32,
+            "price_rub": 850,
+            "pets_ok": true,
+            "from": "hotel:h-antalya-3",
+            "to": "airport",
+            "when": "2026-11-21T06:45",
+            "data_source": "mock"
+          },
+          "total_rub": 175375,
+          "price_breakdown": {
+            "transport": 98628,
+            "hotel": 75047,
+            "transfers": 1700
+          },
+          "data_source": "mock",
+          "issues": []
+        },
+        "stage": "plan",
+        "confirmed": [
+          "origin",
+          "dates",
+          "travelers"
+        ],
+        "clarify_rounds": 0,
+        "order": null,
+        "user_id": null
+      }
+    }
+  },
+  {
+    "name": "replan",
+    "note": "Смена условий: diff «было → стало», trace показывает, что переискано, а что сохранено",
+    "request": {
+      "session_id": "4c40a2841ea2",
+      "message": "а если на 2 дня позже и бюджет меньше на 20%",
+      "action": null
+    },
+    "response": {
+      "session_id": "4c40a2841ea2",
+      "stage": "plan",
+      "message": "Пересобрал план: даты 14.11–21.11 → 16.11–23.11; туда S7 14.11 09:15 → Turkish Airlines 16.11 13:15; обратно Аэрофлот 21.11 06:45 → Победа 23.11 07:00; итого 175 375 ₽ → 158 218 ₽. Поездка — Анталья, 16.11–23.11: рейс Turkish Airlines (4.0 ч, без пересадок), отель «Ривьера 3*» — один из самых выгодных среди подходящих, 14 км от аэропорта. Итого 158 218 ₽. Внимание: Итог 158 218 ₽ — выше бюджета на 17 918 ₽ — предлагаю выбрать отель дешевле или сдвинуть даты.",
+      "questions": [],
+      "cards": [
+        {
+          "type": "plan",
+          "data": {
+            "destination": {
+              "id": "antalya",
+              "name": "Анталья",
+              "country": "Турция"
+            },
+            "check_in": "2026-11-16",
+            "check_out": "2026-11-23",
+            "nights": 7,
+            "travelers": {
+              "adults": 2,
+              "children_ages": [
+                5
+              ],
+              "pets": 0
+            },
+            "outbound": {
+              "id": "fl-out-antalya-2026-11-16-0",
+              "mode": "plane",
+              "carrier": "Turkish Airlines",
+              "from": "Москва",
+              "to": "Анталья",
+              "departure": "2026-11-16T13:15",
+              "arrival": "2026-11-16T17:15",
+              "duration_h": 4.0,
+              "stops": 0,
+              "baggage": true,
+              "price_rub": 42303,
+              "data_source": "mock",
+              "score": 1.0,
+              "breakdown": {
+                "price": 1.0,
+                "travel_time": 1.0,
+                "comfort": 1.0
+              },
+              "too_long": false
+            },
+            "return": {
+              "id": "fl-back-antalya-2026-11-23-2",
+              "mode": "plane",
+              "carrier": "Победа",
+              "from": "Анталья",
+              "to": "Москва",
+              "departure": "2026-11-23T07:00",
+              "arrival": "2026-11-23T11:00",
+              "duration_h": 4.0,
+              "stops": 0,
+              "baggage": false,
+              "price_rub": 39168,
+              "data_source": "mock",
+              "score": 0.96,
+              "breakdown": {
+                "price": 1.0,
+                "travel_time": 1.0,
+                "comfort": 0.8
+              },
+              "too_long": false
+            },
+            "hotel": {
+              "id": "h-antalya-3",
+              "name": "Ривьера 3*",
+              "dest_id": "antalya",
+              "stars": 3,
+              "price_per_night_rub": 10721,
+              "price_total_rub": 75047,
+              "nights": 7,
+              "meals": "RO",
+              "free_cancellation": true,
+              "cancellation_deadline_days": 1,
+              "max_guests": 3,
+              "family_rooms": true,
+              "pets_allowed": true,
+              "kids_club": false,
+              "beach_m": 300,
+              "center_km": 6.6,
+              "airport_km": 14,
+              "check_in": "15:00",
+              "check_out": "12:00",
+              "early_checkin": false,
+              "rating": 8.6,
+              "reviews": 737,
+              "review_pros": [
+                "близко к морю",
+                "чисто"
+              ],
+              "review_cons": [
+                "шумно вечером"
+              ],
+              "data_source": "mock",
+              "fits_guests": true,
+              "score": 0.843,
+              "breakdown": {
+                "price": 1.0,
+                "travel_time": 0.78,
+                "location": 0.78,
+                "rating": 0.7,
+                "cancellation": 1.0,
+                "meals": 0.15
+              },
+              "explanation": {
+                "why": [
+                  "один из самых выгодных среди подходящих",
+                  "14 км от аэропорта",
+                  "300 м до пляжа",
+                  "есть семейные номера",
+                  "гости хвалят: близко к морю, чисто"
+                ],
+                "tradeoffs": [
+                  "без питания"
+                ],
+                "risks": [
+                  "в отзывах жалуются: шумно вечером"
+                ]
+              }
+            },
+            "transfer_in": {
+              "id": "tf-antalya-airport-hotel:h-antalya-3-taxi",
+              "kind": "taxi",
+              "minutes": 32,
+              "price_rub": 850,
+              "pets_ok": true,
+              "from": "airport",
+              "to": "hotel:h-antalya-3",
+              "when": "2026-11-16T17:15",
+              "data_source": "mock"
+            },
+            "transfer_out": {
+              "id": "tf-antalya-hotel:h-antalya-3-airport-taxi",
+              "kind": "taxi",
+              "minutes": 32,
+              "price_rub": 850,
+              "pets_ok": true,
+              "from": "hotel:h-antalya-3",
+              "to": "airport",
+              "when": "2026-11-23T07:00",
+              "data_source": "mock"
+            },
+            "total_rub": 158218,
+            "price_breakdown": {
+              "transport": 81471,
+              "hotel": 75047,
+              "transfers": 1700
+            },
+            "data_source": "mock",
+            "issues": [
+              {
+                "level": "warning",
+                "code": "over_budget",
+                "message": "Итог 158 218 ₽ — выше бюджета на 17 918 ₽",
+                "fix": "выбрать отель дешевле или сдвинуть даты"
+              }
+            ]
+          }
+        },
+        {
+          "type": "comparison",
+          "data": {
+            "kind": "hotel",
+            "weights": {
+              "price": 0.391304347826087,
+              "travel_time": 0.13043478260869565,
+              "location": 0.13043478260869565,
+              "rating": 0.13043478260869565,
+              "cancellation": 0.08695652173913045,
+              "meals": 0.13043478260869565
+            },
+            "items": [
+              {
+                "id": "h-antalya-3",
+                "name": "Ривьера 3*",
+                "dest_id": "antalya",
+                "stars": 3,
+                "price_per_night_rub": 10721,
+                "price_total_rub": 75047,
+                "nights": 7,
+                "meals": "RO",
+                "free_cancellation": true,
+                "cancellation_deadline_days": 1,
+                "max_guests": 3,
+                "family_rooms": true,
+                "pets_allowed": true,
+                "kids_club": false,
+                "beach_m": 300,
+                "center_km": 6.6,
+                "airport_km": 14,
+                "check_in": "15:00",
+                "check_out": "12:00",
+                "early_checkin": false,
+                "rating": 8.6,
+                "reviews": 737,
+                "review_pros": [
+                  "близко к морю",
+                  "чисто"
+                ],
+                "review_cons": [
+                  "шумно вечером"
+                ],
+                "data_source": "mock",
+                "fits_guests": true,
+                "score": 0.843,
+                "breakdown": {
+                  "price": 1.0,
+                  "travel_time": 0.78,
+                  "location": 0.78,
+                  "rating": 0.7,
+                  "cancellation": 1.0,
+                  "meals": 0.15
+                },
+                "explanation": {
+                  "why": [
+                    "один из самых выгодных среди подходящих",
+                    "14 км от аэропорта",
+                    "300 м до пляжа",
+                    "есть семейные номера",
+                    "гости хвалят: близко к морю, чисто"
+                  ],
+                  "tradeoffs": [
+                    "без питания"
+                  ],
+                  "risks": [
+                    "в отзывах жалуются: шумно вечером"
+                  ]
+                },
+                "selected": true
+              },
+              {
+                "id": "h-antalya-8",
+                "name": "Солнечный берег 5*",
+                "dest_id": "antalya",
+                "stars": 5,
+                "price_per_night_rub": 19654,
+                "price_total_rub": 137578,
+                "nights": 7,
+                "meals": "HB",
+                "free_cancellation": true,
+                "cancellation_deadline_days": 3,
+                "max_guests": 3,
+                "family_rooms": false,
+                "pets_allowed": false,
+                "kids_club": true,
+                "beach_m": 50,
+                "center_km": 4.0,
+                "airport_km": 17,
+                "check_in": "14:00",
+                "check_out": "12:00",
+                "early_checkin": true,
+                "rating": 9.7,
+                "reviews": 1062,
+                "review_pros": [
+                  "приветливый персонал",
+                  "близко к морю"
+                ],
+                "review_cons": [
+                  "маленькие номера"
+                ],
+                "data_source": "mock",
+                "fits_guests": true,
+                "score": 0.841,
+                "breakdown": {
+                  "price": 0.6,
+                  "travel_time": 0.7,
+                  "location": 1.0,
+                  "rating": 1.0,
+                  "cancellation": 1.0,
+                  "meals": 0.9
+                },
+                "explanation": {
+                  "why": [
+                    "один из самых выгодных среди подходящих",
+                    "50 м до пляжа",
+                    "оценка 9.7 по 1062 отзывам",
+                    "есть семейные номера и детский клуб",
+                    "гости хвалят: приветливый персонал, близко к морю"
+                  ],
+                  "tradeoffs": [
+                    "на 62 531 ₽ дороже самого дешёвого подходящего"
+                  ],
+                  "risks": [
+                    "в отзывах жалуются: маленькие номера"
+                  ]
+                },
+                "selected": false
+              },
+              {
+                "id": "h-antalya-6",
+                "name": "Кипарис 4*",
+                "dest_id": "antalya",
+                "stars": 4,
+                "price_per_night_rub": 12910,
+                "price_total_rub": 90370,
+                "nights": 7,
+                "meals": "HB",
+                "free_cancellation": true,
+                "cancellation_deadline_days": 3,
+                "max_guests": 4,
+                "family_rooms": true,
+                "pets_allowed": false,
+                "kids_club": false,
+                "beach_m": 1200,
+                "center_km": 1.4,
+                "airport_km": 8,
+                "check_in": "15:00",
+                "check_out": "12:00",
+                "early_checkin": true,
+                "rating": 8.9,
+                "reviews": 1928,
+                "review_pros": [
+                  "близко к морю",
+                  "вкусные завтраки"
+                ],
+                "review_cons": [
+                  "медленный Wi-Fi"
+                ],
+                "data_source": "mock",
+                "fits_guests": true,
+                "score": 0.83,
+                "breakdown": {
+                  "price": 0.9,
+                  "travel_time": 0.93,
+                  "location": 0.0,
+                  "rating": 0.78,
+                  "cancellation": 1.0,
+                  "meals": 0.9
+                },
+                "explanation": {
+                  "why": [
+                    "один из самых выгодных среди подходящих",
+                    "8 км от аэропорта",
+                    "завтрак и ужин",
+                    "есть семейные номера",
+                    "гости хвалят: близко к морю, вкусные завтраки"
+                  ],
+                  "tradeoffs": [
+                    "до пляжа 1200 м",
+                    "на 15 323 ₽ дороже самого дешёвого подходящего"
+                  ],
+                  "risks": [
+                    "в отзывах жалуются: медленный Wi-Fi"
+                  ]
+                },
+                "selected": false
+              }
+            ]
+          }
+        },
+        {
+          "type": "comparison",
+          "data": {
+            "kind": "transport",
+            "direction": "out",
+            "items": [
+              {
+                "id": "fl-out-antalya-2026-11-16-0",
+                "mode": "plane",
+                "carrier": "Turkish Airlines",
+                "from": "Москва",
+                "to": "Анталья",
+                "departure": "2026-11-16T13:15",
+                "arrival": "2026-11-16T17:15",
+                "duration_h": 4.0,
+                "stops": 0,
+                "baggage": true,
+                "price_rub": 42303,
+                "data_source": "mock",
+                "score": 1.0,
+                "breakdown": {
+                  "price": 1.0,
+                  "travel_time": 1.0,
+                  "comfort": 1.0
+                },
+                "too_long": false,
+                "explanation": {
+                  "why": [
+                    "один из самых дешёвых",
+                    "быстро: 4.0 ч в пути",
+                    "без пересадок"
+                  ],
+                  "tradeoffs": [],
+                  "risks": []
+                },
+                "selected": true
+              },
+              {
+                "id": "fl-out-antalya-2026-11-16-4",
+                "mode": "plane",
+                "carrier": "Аэрофлот",
+                "from": "Москва",
+                "to": "Анталья",
+                "departure": "2026-11-16T11:30",
+                "arrival": "2026-11-16T15:30",
+                "duration_h": 4.0,
+                "stops": 0,
+                "baggage": true,
+                "price_rub": 44919,
+                "data_source": "mock",
+                "score": 0.854,
+                "breakdown": {
+                  "price": 0.68,
+                  "travel_time": 1.0,
+                  "comfort": 1.0
+                },
+                "too_long": false,
+                "explanation": {
+                  "why": [
+                    "быстро: 4.0 ч в пути",
+                    "без пересадок"
+                  ],
+                  "tradeoffs": [],
+                  "risks": []
+                },
+                "selected": false
+              },
+              {
+                "id": "fl-out-antalya-2026-11-16-1",
+                "mode": "plane",
+                "carrier": "S7",
+                "from": "Москва",
+                "to": "Анталья",
+                "departure": "2026-11-16T11:00",
+                "arrival": "2026-11-16T15:00",
+                "duration_h": 4.0,
+                "stops": 0,
+                "baggage": true,
+                "price_rub": 50160,
+                "data_source": "mock",
+                "score": 0.562,
+                "breakdown": {
+                  "price": 0.03,
+                  "travel_time": 1.0,
+                  "comfort": 1.0
+                },
+                "too_long": false,
+                "explanation": {
+                  "why": [
+                    "быстро: 4.0 ч в пути",
+                    "без пересадок"
+                  ],
+                  "tradeoffs": [],
+                  "risks": []
+                },
+                "selected": false
+              }
+            ]
+          }
+        },
+        {
+          "type": "issues",
+          "data": {
+            "items": [
+              {
+                "level": "warning",
+                "code": "over_budget",
+                "message": "Итог 158 218 ₽ — выше бюджета на 17 918 ₽",
+                "fix": "выбрать отель дешевле или сдвинуть даты"
+              }
+            ]
+          }
+        },
+        {
+          "type": "assumptions",
+          "data": {
+            "items": [
+              {
+                "field": "weights",
+                "value": "цена — главный критерий",
+                "reason": "вы просили недорого",
+                "source": "inferred"
+              },
+              {
+                "field": "nights",
+                "value": "7 ночей",
+                "reason": "длительность не названа",
+                "source": "default"
+              },
+              {
+                "field": "adults",
+                "value": "2 взрослых",
+                "reason": "с ребёнком обычно едут двое взрослых",
+                "source": "default"
+              },
+              {
+                "field": "kids",
+                "value": "семейный номер, детское меню в приоритете",
+                "reason": "едет ребёнок (5 лет)",
+                "source": "inferred"
+              }
+            ],
+            "weights": {
+              "price": 0.45,
+              "travel_time": 0.15,
+              "location": 0.15,
+              "rating": 0.15,
+              "cancellation": 0.1,
+              "meals": 0.15
+            },
+            "must_have": [],
+            "constraints": {
+              "max_travel_hours": 4.0,
+              "direct_only": false,
+              "transport": "any",
+              "max_beach_m": null
+            }
+          }
+        }
+      ],
+      "quick_replies": [
+        {
+          "label": "Оформить за 158 218 ₽",
+          "text": null,
+          "action": {
+            "type": "checkout"
+          }
+        },
+        {
+          "label": "Отель: Солнечный берег 5*",
+          "text": null,
+          "action": {
+            "type": "select_hotel",
+            "id": "h-antalya-8"
+          }
+        },
+        {
+          "label": "Отель: Кипарис 4*",
+          "text": null,
+          "action": {
+            "type": "select_hotel",
+            "id": "h-antalya-6"
+          }
+        },
+        {
+          "label": "На 2 дня позже",
+          "text": "а если на 2 дня позже?",
+          "action": null
+        },
+        {
+          "label": "Дешевле",
+          "text": "бюджет меньше на 20%",
+          "action": null
+        }
+      ],
+      "diff": [
+        {
+          "field": "dates",
+          "label": "Даты",
+          "before": "14.11–21.11",
+          "after": "16.11–23.11"
+        },
+        {
+          "field": "outbound",
+          "label": "Туда",
+          "before": "S7 14.11 09:15",
+          "after": "Turkish Airlines 16.11 13:15"
+        },
+        {
+          "field": "return",
+          "label": "Обратно",
+          "before": "Аэрофлот 21.11 06:45",
+          "after": "Победа 23.11 07:00"
+        },
+        {
+          "field": "total",
+          "label": "Итого",
+          "before": "175 375 ₽",
+          "after": "158 218 ₽"
+        }
+      ],
+      "trace": [
+        {
+          "step": "understand",
+          "detail": "правила (LLM выключена): shift_days, budget_factor",
+          "ms": 0
+        },
+        {
+          "step": "replan",
+          "detail": "изменилось: budget, dates; переищу: destinations, hotels, outbound, return, transfers; сохранено: —",
+          "ms": 0
+        },
+        {
+          "step": "search_transport",
+          "detail": "туда 5, обратно 4 вариантов",
+          "ms": 0
+        },
+        {
+          "step": "search_hotels",
+          "detail": "14 отелей",
+          "ms": 0
+        },
+        {
+          "step": "score",
+          "detail": "отелей прошло фильтры 14, отсеяно 0",
+          "ms": 0
+        },
+        {
+          "step": "assemble",
+          "detail": "проверено 128 комбинаций, без ошибок стыковки 128, в бюджет не влезает ни одна — беру самую дешёвую",
+          "ms": 1
+        },
+        {
+          "step": "validate",
+          "detail": "warning:over_budget",
+          "ms": 0
+        }
+      ],
+      "state": {
+        "origin_city": "Москва",
+        "destination_hint": "к теплому морю",
+        "trip_type": [
+          "sea"
+        ],
+        "dates": {
+          "start": "2026-11-16",
+          "end": "2026-11-23",
+          "month": 11,
+          "nights": null,
+          "flexibility_days": 0
+        },
+        "travelers": {
+          "adults": 2,
+          "children_ages": [
+            5
+          ],
+          "pets": 0
+        },
+        "budget": {
+          "total_rub": 140300,
+          "level": "low"
+        },
+        "constraints": {
+          "max_travel_hours": 4.0,
+          "direct_only": false,
+          "transport": "any",
+          "max_beach_m": null
+        },
+        "must_have": [],
+        "weights": {
+          "price": 0.45,
+          "travel_time": 0.15,
+          "location": 0.15,
+          "rating": 0.15,
+          "cancellation": 0.1,
+          "meals": 0.15
+        },
+        "near": null,
+        "assumptions": [
+          {
+            "field": "weights",
+            "value": "цена — главный критерий",
+            "reason": "вы просили недорого",
+            "source": "inferred"
+          },
+          {
+            "field": "nights",
+            "value": "7 ночей",
+            "reason": "длительность не названа",
+            "source": "default"
+          },
+          {
+            "field": "adults",
+            "value": "2 взрослых",
+            "reason": "с ребёнком обычно едут двое взрослых",
+            "source": "default"
+          },
+          {
+            "field": "kids",
+            "value": "семейный номер, детское меню в приоритете",
+            "reason": "едет ребёнок (5 лет)",
+            "source": "inferred"
+          }
+        ],
+        "selection": {
+          "destination_id": "antalya",
+          "outbound_id": "fl-out-antalya-2026-11-16-0",
+          "return_id": "fl-back-antalya-2026-11-23-2",
+          "hotel_id": "h-antalya-3",
+          "transfer_in_id": "tf-antalya-airport-hotel:h-antalya-3-taxi",
+          "transfer_out_id": "tf-antalya-hotel:h-antalya-3-airport-taxi",
+          "locked": [
+            "destination_id"
+          ]
+        },
+        "plan": {
+          "destination": {
+            "id": "antalya",
+            "name": "Анталья",
+            "country": "Турция"
+          },
+          "check_in": "2026-11-16",
+          "check_out": "2026-11-23",
+          "nights": 7,
+          "travelers": {
+            "adults": 2,
+            "children_ages": [
+              5
+            ],
+            "pets": 0
+          },
+          "outbound": {
+            "id": "fl-out-antalya-2026-11-16-0",
+            "mode": "plane",
+            "carrier": "Turkish Airlines",
+            "from": "Москва",
+            "to": "Анталья",
+            "departure": "2026-11-16T13:15",
+            "arrival": "2026-11-16T17:15",
+            "duration_h": 4.0,
+            "stops": 0,
+            "baggage": true,
+            "price_rub": 42303,
+            "data_source": "mock",
+            "score": 1.0,
+            "breakdown": {
+              "price": 1.0,
+              "travel_time": 1.0,
+              "comfort": 1.0
+            },
+            "too_long": false
+          },
+          "return": {
+            "id": "fl-back-antalya-2026-11-23-2",
+            "mode": "plane",
+            "carrier": "Победа",
+            "from": "Анталья",
+            "to": "Москва",
+            "departure": "2026-11-23T07:00",
+            "arrival": "2026-11-23T11:00",
+            "duration_h": 4.0,
+            "stops": 0,
+            "baggage": false,
+            "price_rub": 39168,
+            "data_source": "mock",
+            "score": 0.96,
+            "breakdown": {
+              "price": 1.0,
+              "travel_time": 1.0,
+              "comfort": 0.8
+            },
+            "too_long": false
+          },
+          "hotel": {
+            "id": "h-antalya-3",
+            "name": "Ривьера 3*",
+            "dest_id": "antalya",
+            "stars": 3,
+            "price_per_night_rub": 10721,
+            "price_total_rub": 75047,
+            "nights": 7,
+            "meals": "RO",
+            "free_cancellation": true,
+            "cancellation_deadline_days": 1,
+            "max_guests": 3,
+            "family_rooms": true,
+            "pets_allowed": true,
+            "kids_club": false,
+            "beach_m": 300,
+            "center_km": 6.6,
+            "airport_km": 14,
+            "check_in": "15:00",
+            "check_out": "12:00",
+            "early_checkin": false,
+            "rating": 8.6,
+            "reviews": 737,
+            "review_pros": [
+              "близко к морю",
+              "чисто"
+            ],
+            "review_cons": [
+              "шумно вечером"
+            ],
+            "data_source": "mock",
+            "fits_guests": true,
+            "score": 0.843,
+            "breakdown": {
+              "price": 1.0,
+              "travel_time": 0.78,
+              "location": 0.78,
+              "rating": 0.7,
+              "cancellation": 1.0,
+              "meals": 0.15
+            },
+            "explanation": {
+              "why": [
+                "один из самых выгодных среди подходящих",
+                "14 км от аэропорта",
+                "300 м до пляжа",
+                "есть семейные номера",
+                "гости хвалят: близко к морю, чисто"
+              ],
+              "tradeoffs": [
+                "без питания"
+              ],
+              "risks": [
+                "в отзывах жалуются: шумно вечером"
+              ]
+            }
+          },
+          "transfer_in": {
+            "id": "tf-antalya-airport-hotel:h-antalya-3-taxi",
+            "kind": "taxi",
+            "minutes": 32,
+            "price_rub": 850,
+            "pets_ok": true,
+            "from": "airport",
+            "to": "hotel:h-antalya-3",
+            "when": "2026-11-16T17:15",
+            "data_source": "mock"
+          },
+          "transfer_out": {
+            "id": "tf-antalya-hotel:h-antalya-3-airport-taxi",
+            "kind": "taxi",
+            "minutes": 32,
+            "price_rub": 850,
+            "pets_ok": true,
+            "from": "hotel:h-antalya-3",
+            "to": "airport",
+            "when": "2026-11-23T07:00",
+            "data_source": "mock"
+          },
+          "total_rub": 158218,
+          "price_breakdown": {
+            "transport": 81471,
+            "hotel": 75047,
+            "transfers": 1700
+          },
+          "data_source": "mock",
+          "issues": [
+            {
+              "level": "warning",
+              "code": "over_budget",
+              "message": "Итог 158 218 ₽ — выше бюджета на 17 918 ₽",
+              "fix": "выбрать отель дешевле или сдвинуть даты"
+            }
+          ]
+        },
+        "stage": "plan",
+        "confirmed": [
+          "origin",
+          "dates",
+          "travelers"
+        ],
+        "clarify_rounds": 0,
+        "order": null,
+        "user_id": null
+      }
+    }
+  },
+  {
+    "name": "booked",
+    "note": "Оформление: карточка order с номером брони (оплата имитирована)",
+    "request": {
+      "session_id": "4c40a2841ea2",
+      "message": null,
+      "action": {
+        "type": "checkout"
+      }
+    },
+    "response": {
+      "session_id": "4c40a2841ea2",
+      "stage": "booked",
+      "message": "Готово! Поездка оформлена, номер брони OST-647603 (оплата имитирована). Могу запросить ранний заезд, поменять даты или напомнить о вылете.",
+      "questions": [],
+      "cards": [
+        {
+          "type": "order",
+          "data": {
+            "order_id": "OST-647603",
+            "status": "paid",
+            "paid_rub": 158218,
+            "payment": "имитация",
+            "created_at": "2026-10-25T01:50:07",
+            "cart": {
+              "items": [
+                {
+                  "kind": "transport",
+                  "title": "Москва → Анталья",
+                  "id": "fl-out-antalya-2026-11-16-0",
+                  "price_rub": 42303
+                },
+                {
+                  "kind": "transport",
+                  "title": "Анталья → Москва",
+                  "id": "fl-back-antalya-2026-11-23-2",
+                  "price_rub": 39168
+                },
+                {
+                  "kind": "hotel",
+                  "title": "Ривьера 3*, 7 ноч.",
+                  "id": "h-antalya-3",
+                  "price_rub": 75047
+                },
+                {
+                  "kind": "transfer",
+                  "title": "Трансфер до отеля",
+                  "id": "tf-antalya-airport-hotel:h-antalya-3-taxi",
+                  "price_rub": 850
+                },
+                {
+                  "kind": "transfer",
+                  "title": "Трансфер обратно",
+                  "id": "tf-antalya-hotel:h-antalya-3-airport-taxi",
+                  "price_rub": 850
+                }
+              ],
+              "total_rub": 158218,
+              "hotel_id": "h-antalya-3"
+            },
+            "services": [],
+            "reminders": [
+              {
+                "at": "2026-11-15T13:15",
+                "text": "Открывается онлайн-регистрация на рейс Turkish Airlines Москва → Анталья"
+              },
+              {
+                "at": "2026-11-15T15:00",
+                "text": "Последний день бесплатной отмены отеля"
+              },
+              {
+                "at": "2026-11-16T10:15",
+                "text": "Выезжайте в аэропорт: вылет в 13:15"
+              },
+              {
+                "at": "2026-11-16T15:00",
+                "text": "Заселение в «Ривьера 3*» с 15:00, трансфер из аэропорта — такси"
+              },
+              {
+                "at": "2026-11-22T07:00",
+                "text": "Онлайн-регистрация на обратный рейс Победа"
+              },
+              {
+                "at": "2026-11-23T04:28",
+                "text": "Выезд из отеля к рейсу в 07:00 (такси, ~32 мин в пути)"
+              }
+            ]
+          }
+        }
+      ],
+      "quick_replies": [
+        {
+          "label": "Запросить ранний заезд",
+          "text": null,
+          "action": {
+            "type": "request_early_checkin"
+          }
+        },
+        {
+          "label": "Напоминания",
+          "text": "напомни, что когда",
+          "action": null
+        },
+        {
+          "label": "На 2 дня позже",
+          "text": "а если на 2 дня позже?",
+          "action": null
+        }
+      ],
+      "diff": [],
+      "trace": [
+        {
+          "step": "checkout",
+          "detail": "заказ OST-647603 (оплата имитирована)",
+          "ms": 0
+        }
+      ],
+      "state": {
+        "origin_city": "Москва",
+        "destination_hint": "к теплому морю",
+        "trip_type": [
+          "sea"
+        ],
+        "dates": {
+          "start": "2026-11-16",
+          "end": "2026-11-23",
+          "month": 11,
+          "nights": null,
+          "flexibility_days": 0
+        },
+        "travelers": {
+          "adults": 2,
+          "children_ages": [
+            5
+          ],
+          "pets": 0
+        },
+        "budget": {
+          "total_rub": 140300,
+          "level": "low"
+        },
+        "constraints": {
+          "max_travel_hours": 4.0,
+          "direct_only": false,
+          "transport": "any",
+          "max_beach_m": null
+        },
+        "must_have": [],
+        "weights": {
+          "price": 0.45,
+          "travel_time": 0.15,
+          "location": 0.15,
+          "rating": 0.15,
+          "cancellation": 0.1,
+          "meals": 0.15
+        },
+        "near": null,
+        "assumptions": [
+          {
+            "field": "weights",
+            "value": "цена — главный критерий",
+            "reason": "вы просили недорого",
+            "source": "inferred"
+          },
+          {
+            "field": "nights",
+            "value": "7 ночей",
+            "reason": "длительность не названа",
+            "source": "default"
+          },
+          {
+            "field": "adults",
+            "value": "2 взрослых",
+            "reason": "с ребёнком обычно едут двое взрослых",
+            "source": "default"
+          },
+          {
+            "field": "kids",
+            "value": "семейный номер, детское меню в приоритете",
+            "reason": "едет ребёнок (5 лет)",
+            "source": "inferred"
+          }
+        ],
+        "selection": {
+          "destination_id": "antalya",
+          "outbound_id": "fl-out-antalya-2026-11-16-0",
+          "return_id": "fl-back-antalya-2026-11-23-2",
+          "hotel_id": "h-antalya-3",
+          "transfer_in_id": "tf-antalya-airport-hotel:h-antalya-3-taxi",
+          "transfer_out_id": "tf-antalya-hotel:h-antalya-3-airport-taxi",
+          "locked": [
+            "destination_id"
+          ]
+        },
+        "plan": {
+          "destination": {
+            "id": "antalya",
+            "name": "Анталья",
+            "country": "Турция"
+          },
+          "check_in": "2026-11-16",
+          "check_out": "2026-11-23",
+          "nights": 7,
+          "travelers": {
+            "adults": 2,
+            "children_ages": [
+              5
+            ],
+            "pets": 0
+          },
+          "outbound": {
+            "id": "fl-out-antalya-2026-11-16-0",
+            "mode": "plane",
+            "carrier": "Turkish Airlines",
+            "from": "Москва",
+            "to": "Анталья",
+            "departure": "2026-11-16T13:15",
+            "arrival": "2026-11-16T17:15",
+            "duration_h": 4.0,
+            "stops": 0,
+            "baggage": true,
+            "price_rub": 42303,
+            "data_source": "mock",
+            "score": 1.0,
+            "breakdown": {
+              "price": 1.0,
+              "travel_time": 1.0,
+              "comfort": 1.0
+            },
+            "too_long": false
+          },
+          "return": {
+            "id": "fl-back-antalya-2026-11-23-2",
+            "mode": "plane",
+            "carrier": "Победа",
+            "from": "Анталья",
+            "to": "Москва",
+            "departure": "2026-11-23T07:00",
+            "arrival": "2026-11-23T11:00",
+            "duration_h": 4.0,
+            "stops": 0,
+            "baggage": false,
+            "price_rub": 39168,
+            "data_source": "mock",
+            "score": 0.96,
+            "breakdown": {
+              "price": 1.0,
+              "travel_time": 1.0,
+              "comfort": 0.8
+            },
+            "too_long": false
+          },
+          "hotel": {
+            "id": "h-antalya-3",
+            "name": "Ривьера 3*",
+            "dest_id": "antalya",
+            "stars": 3,
+            "price_per_night_rub": 10721,
+            "price_total_rub": 75047,
+            "nights": 7,
+            "meals": "RO",
+            "free_cancellation": true,
+            "cancellation_deadline_days": 1,
+            "max_guests": 3,
+            "family_rooms": true,
+            "pets_allowed": true,
+            "kids_club": false,
+            "beach_m": 300,
+            "center_km": 6.6,
+            "airport_km": 14,
+            "check_in": "15:00",
+            "check_out": "12:00",
+            "early_checkin": false,
+            "rating": 8.6,
+            "reviews": 737,
+            "review_pros": [
+              "близко к морю",
+              "чисто"
+            ],
+            "review_cons": [
+              "шумно вечером"
+            ],
+            "data_source": "mock",
+            "fits_guests": true,
+            "score": 0.843,
+            "breakdown": {
+              "price": 1.0,
+              "travel_time": 0.78,
+              "location": 0.78,
+              "rating": 0.7,
+              "cancellation": 1.0,
+              "meals": 0.15
+            },
+            "explanation": {
+              "why": [
+                "один из самых выгодных среди подходящих",
+                "14 км от аэропорта",
+                "300 м до пляжа",
+                "есть семейные номера",
+                "гости хвалят: близко к морю, чисто"
+              ],
+              "tradeoffs": [
+                "без питания"
+              ],
+              "risks": [
+                "в отзывах жалуются: шумно вечером"
+              ]
+            }
+          },
+          "transfer_in": {
+            "id": "tf-antalya-airport-hotel:h-antalya-3-taxi",
+            "kind": "taxi",
+            "minutes": 32,
+            "price_rub": 850,
+            "pets_ok": true,
+            "from": "airport",
+            "to": "hotel:h-antalya-3",
+            "when": "2026-11-16T17:15",
+            "data_source": "mock"
+          },
+          "transfer_out": {
+            "id": "tf-antalya-hotel:h-antalya-3-airport-taxi",
+            "kind": "taxi",
+            "minutes": 32,
+            "price_rub": 850,
+            "pets_ok": true,
+            "from": "hotel:h-antalya-3",
+            "to": "airport",
+            "when": "2026-11-23T07:00",
+            "data_source": "mock"
+          },
+          "total_rub": 158218,
+          "price_breakdown": {
+            "transport": 81471,
+            "hotel": 75047,
+            "transfers": 1700
+          },
+          "data_source": "mock",
+          "issues": [
+            {
+              "level": "warning",
+              "code": "over_budget",
+              "message": "Итог 158 218 ₽ — выше бюджета на 17 918 ₽",
+              "fix": "выбрать отель дешевле или сдвинуть даты"
+            }
+          ]
+        },
+        "stage": "booked",
+        "confirmed": [
+          "origin",
+          "dates",
+          "travelers"
+        ],
+        "clarify_rounds": 0,
+        "order": {
+          "order_id": "OST-647603",
+          "status": "paid",
+          "paid_rub": 158218,
+          "payment": "имитация",
+          "created_at": "2026-10-25T01:50:07",
+          "cart": {
+            "items": [
+              {
+                "kind": "transport",
+                "title": "Москва → Анталья",
+                "id": "fl-out-antalya-2026-11-16-0",
+                "price_rub": 42303
+              },
+              {
+                "kind": "transport",
+                "title": "Анталья → Москва",
+                "id": "fl-back-antalya-2026-11-23-2",
+                "price_rub": 39168
+              },
+              {
+                "kind": "hotel",
+                "title": "Ривьера 3*, 7 ноч.",
+                "id": "h-antalya-3",
+                "price_rub": 75047
+              },
+              {
+                "kind": "transfer",
+                "title": "Трансфер до отеля",
+                "id": "tf-antalya-airport-hotel:h-antalya-3-taxi",
+                "price_rub": 850
+              },
+              {
+                "kind": "transfer",
+                "title": "Трансфер обратно",
+                "id": "tf-antalya-hotel:h-antalya-3-airport-taxi",
+                "price_rub": 850
+              }
+            ],
+            "total_rub": 158218,
+            "hotel_id": "h-antalya-3"
+          },
+          "services": [],
+          "reminders": [
+            {
+              "at": "2026-11-15T13:15",
+              "text": "Открывается онлайн-регистрация на рейс Turkish Airlines Москва → Анталья"
+            },
+            {
+              "at": "2026-11-15T15:00",
+              "text": "Последний день бесплатной отмены отеля"
+            },
+            {
+              "at": "2026-11-16T10:15",
+              "text": "Выезжайте в аэропорт: вылет в 13:15"
+            },
+            {
+              "at": "2026-11-16T15:00",
+              "text": "Заселение в «Ривьера 3*» с 15:00, трансфер из аэропорта — такси"
+            },
+            {
+              "at": "2026-11-22T07:00",
+              "text": "Онлайн-регистрация на обратный рейс Победа"
+            },
+            {
+              "at": "2026-11-23T04:28",
+              "text": "Выезд из отеля к рейсу в 07:00 (такси, ~32 мин в пути)"
+            }
+          ]
+        },
+        "user_id": null
+      }
+    }
+  },
+  {
+    "name": "unknown_place",
+    "note": "Место не из каталога: агент честно говорит об этом в message",
+    "request": {
+      "session_id": null,
+      "message": "хочу в Атлантиду из Москвы в декабре вдвоём",
+      "action": null
+    },
+    "response": {
+      "session_id": "68823978d98b",
+      "stage": "inspire",
+      "message": "«Атлантиду» нет среди направлений, с которыми я работаю, — подбираю по остальным условиям. Под запрос (из города Москва, 12.12–19.12, 2 взрослых) подходят: Дубай, Шарм-эль-Шейх, Анталья. Лучше всего — Дубай: хороший баланс цены и дороги, ориентировочно 193 400 ₽ на всех. Выберите направление — соберу поездку целиком.",
+      "questions": [],
+      "cards": [
+        {
+          "type": "destination",
+          "data": {
+            "id": "dubai",
+            "name": "Дубай",
+            "country": "ОАЭ",
+            "tags": [
+              "sea",
+              "city",
+              "luxury"
+            ],
+            "visa": "не нужна",
+            "air_temp": 26,
+            "water_temp": 24,
+            "flight_hours": 5.3,
+            "train_hours": null,
+            "est_total_rub": 193400,
+            "est_night_rub": 14000,
+            "ski_season": false,
+            "data_source": "mock",
+            "score": 0.494,
+            "reasons": [],
+            "tradeoffs": [],
+            "rank": 1,
+            "explanation": {
+              "why": [],
+              "tradeoffs": [],
+              "risks": []
+            }
+          }
+        },
+        {
+          "type": "destination",
+          "data": {
+            "id": "sharm",
+            "name": "Шарм-эль-Шейх",
+            "country": "Египет",
+            "tags": [
+              "sea",
+              "all_inclusive",
+              "diving"
+            ],
+            "visa": "штамп в аэропорту",
+            "air_temp": 23,
+            "water_temp": 23,
+            "flight_hours": 5.0,
+            "train_hours": null,
+            "est_total_rub": 146000,
+            "est_night_rub": 8000,
+            "ski_season": false,
+            "data_source": "mock",
+            "score": 0.475,
+            "reasons": [],
+            "tradeoffs": [],
+            "rank": 2,
+            "explanation": {
+              "why": [],
+              "tradeoffs": [],
+              "risks": [
+                "виза: штамп в аэропорту"
+              ]
+            }
+          }
+        },
+        {
+          "type": "destination",
+          "data": {
+            "id": "antalya",
+            "name": "Анталья",
+            "country": "Турция",
+            "tags": [
+              "sea",
+              "all_inclusive"
+            ],
+            "visa": "не нужна (до 60 дней)",
+            "air_temp": 17,
+            "water_temp": 19,
+            "flight_hours": 4.0,
+            "train_hours": null,
+            "est_total_rub": 135000,
+            "est_night_rub": 9000,
+            "ski_season": false,
+            "data_source": "mock",
+            "score": 0.42,
+            "reasons": [
+              "лететь около 4.0 ч"
+            ],
+            "tradeoffs": [],
+            "rank": 3,
+            "explanation": {
+              "why": [
+                "лететь около 4.0 ч"
+              ],
+              "tradeoffs": [],
+              "risks": [
+                "виза: не нужна (до 60 дней)"
+              ]
+            }
+          }
+        },
+        {
+          "type": "assumptions",
+          "data": {
+            "items": [
+              {
+                "field": "budget",
+                "value": "средний ценовой уровень",
+                "reason": "бюджет не назван",
+                "source": "default"
+              },
+              {
+                "field": "nights",
+                "value": "7 ночей",
+                "reason": "длительность не названа",
+                "source": "default"
+              },
+              {
+                "field": "dates",
+                "value": "12.12 – 19.12",
+                "reason": "назван только месяц — взяли ближайшие выходные после 10-го",
+                "source": "default"
+              }
+            ],
+            "weights": {
+              "price": 0.3,
+              "travel_time": 0.15,
+              "location": 0.15,
+              "rating": 0.15,
+              "cancellation": 0.1,
+              "meals": 0.15
+            },
+            "must_have": [],
+            "constraints": {
+              "max_travel_hours": null,
+              "direct_only": false,
+              "transport": "any",
+              "max_beach_m": null
+            }
+          }
+        }
+      ],
+      "quick_replies": [
+        {
+          "label": "Выбрать: Дубай",
+          "text": null,
+          "action": {
+            "type": "select_destination",
+            "id": "dubai"
+          }
+        },
+        {
+          "label": "Выбрать: Шарм-эль-Шейх",
+          "text": null,
+          "action": {
+            "type": "select_destination",
+            "id": "sharm"
+          }
+        },
+        {
+          "label": "Выбрать: Анталья",
+          "text": null,
+          "action": {
+            "type": "select_destination",
+            "id": "antalya"
+          }
+        }
+      ],
+      "diff": [],
+      "trace": [
+        {
+          "step": "understand",
+          "detail": "правила (LLM выключена): origin_city, destination_name, month, adults",
+          "ms": 0
+        },
+        {
+          "step": "search_destinations",
+          "detail": "найдено 13 направлений",
+          "ms": 0
+        }
+      ],
+      "state": {
+        "origin_city": "Москва",
+        "destination_hint": null,
+        "trip_type": [],
+        "dates": {
+          "start": null,
+          "end": null,
+          "month": 12,
+          "nights": null,
+          "flexibility_days": 0
+        },
+        "travelers": {
+          "adults": 2,
+          "children_ages": [],
+          "pets": 0
+        },
+        "budget": {
+          "total_rub": null,
+          "level": null
+        },
+        "constraints": {
+          "max_travel_hours": null,
+          "direct_only": false,
+          "transport": "any",
+          "max_beach_m": null
+        },
+        "must_have": [],
+        "weights": {
+          "price": 0.3,
+          "travel_time": 0.15,
+          "location": 0.15,
+          "rating": 0.15,
+          "cancellation": 0.1,
+          "meals": 0.15
+        },
+        "near": null,
+        "assumptions": [
+          {
+            "field": "budget",
+            "value": "средний ценовой уровень",
+            "reason": "бюджет не назван",
+            "source": "default"
+          },
+          {
+            "field": "nights",
+            "value": "7 ночей",
+            "reason": "длительность не названа",
+            "source": "default"
+          },
+          {
+            "field": "dates",
+            "value": "12.12 – 19.12",
+            "reason": "назван только месяц — взяли ближайшие выходные после 10-го",
+            "source": "default"
+          }
+        ],
+        "selection": {
+          "destination_id": null,
+          "outbound_id": null,
+          "return_id": null,
+          "hotel_id": null,
+          "transfer_in_id": null,
+          "transfer_out_id": null,
+          "locked": []
+        },
+        "plan": null,
+        "stage": "inspire",
+        "confirmed": [
+          "origin",
+          "dates",
+          "travelers",
+          "adults"
+        ],
+        "clarify_rounds": 0,
+        "order": null,
+        "user_id": null
+      }
+    }
+  }
+]
