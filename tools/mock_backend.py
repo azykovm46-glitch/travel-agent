@@ -43,7 +43,7 @@ DESTINATIONS: list[dict] = [
      "hours_from_moscow": 4.0, "train_hours_from_moscow": None, "airport_km": 15, "station_km": None,
      "climate": {1: (15, 17), 2: (16, 16), 3: (18, 17), 4: (21, 18), 5: (26, 22), 6: (31, 25),
                  7: (34, 28), 8: (34, 29), 9: (31, 27), 10: (26, 24), 11: (21, 21), 12: (17, 19)}},
-    {"id": "sharm", "name": "Шарм-эль-Шейх", "country": "Египет", "aliases": ["шарм", "египет"],
+    {"id": "sharm", "name": "Шарм-эль-Шейх", "country": "Египет", "aliases": ["шарм", "египет", "египт"],
      "tags": ["sea", "all_inclusive", "diving"], "night_rub": 8000, "visa": "штамп в аэропорту",
      "hours_from_moscow": 5.0, "train_hours_from_moscow": None, "airport_km": 18, "station_km": None,
      "climate": {1: (22, 22), 2: (23, 21), 3: (26, 22), 4: (30, 23), 5: (34, 25), 6: (37, 27),
@@ -68,14 +68,40 @@ DESTINATIONS: list[dict] = [
      "hours_from_moscow": 9.5, "train_hours_from_moscow": None, "airport_km": 32, "station_km": None,
      "climate": {1: (32, 28), 2: (33, 28), 3: (33, 29), 4: (34, 30), 5: (32, 30), 6: (31, 29),
                  7: (31, 29), 8: (31, 29), 9: (30, 29), 10: (30, 29), 11: (31, 29), 12: (31, 28)}},
+    # Горнолыжные курорты: ski_months — месяцы катания; время перелёта — до ближайшего аэропорта
+    {"id": "krasnaya_polyana", "name": "Красная Поляна", "country": "Россия",
+     "aliases": ["красная поляна", "полян", "роза хутор", "розу хутор", "газпром лаура"],
+     "tags": ["ski", "nature"], "night_rub": 9000, "visa": "не нужна", "ski_months": [12, 1, 2, 3, 4],
+     "hours_from_moscow": 2.5, "train_hours_from_moscow": None, "airport_km": 50, "station_km": None,
+     "climate": {1: (-3, None), 2: (-2, None), 3: (2, None), 4: (8, None), 5: (13, None), 6: (17, None),
+                 7: (20, None), 8: (20, None), 9: (15, None), 10: (9, None), 11: (3, None), 12: (-1, None)}},
+    {"id": "sheregesh", "name": "Шерегеш", "country": "Россия", "aliases": ["шерегеш"],
+     "tags": ["ski", "nature"], "night_rub": 6000, "visa": "не нужна", "ski_months": [11, 12, 1, 2, 3, 4],
+     "hours_from_moscow": 4.3, "train_hours_from_moscow": None, "airport_km": 160, "station_km": None,
+     "climate": {1: (-15, None), 2: (-12, None), 3: (-5, None), 4: (3, None), 5: (12, None), 6: (19, None),
+                 7: (21, None), 8: (18, None), 9: (11, None), 10: (3, None), 11: (-7, None), 12: (-13, None)}},
+    {"id": "dombai", "name": "Домбай", "country": "Россия", "aliases": ["домбай"],
+     "tags": ["ski", "nature"], "night_rub": 5500, "visa": "не нужна", "ski_months": [12, 1, 2, 3, 4],
+     "hours_from_moscow": 2.3, "train_hours_from_moscow": None, "airport_km": 200, "station_km": None,
+     "climate": {1: (-3, None), 2: (-2, None), 3: (2, None), 4: (8, None), 5: (13, None), 6: (17, None),
+                 7: (20, None), 8: (20, None), 9: (15, None), 10: (9, None), 11: (3, None), 12: (-1, None)}},
 ]
 
 # Смещение времени перелёта относительно Москвы (часы) для других городов вылета
 ORIGIN_OFFSET = {"Москва": 0.0, "Санкт-Петербург": 0.4, "Казань": 0.3, "Екатеринбург": 1.0,
-                 "Новосибирск": 3.0, "Нижний Новгород": 0.3}
+                 "Новосибирск": 3.0, "Нижний Новгород": 0.3, "Самара": 0.4, "Ростов-на-Дону": 0.0,
+                 "Краснодар": 0.0, "Воронеж": 0.1, "Уфа": 0.6, "Пермь": 0.7, "Челябинск": 1.0,
+                 "Тюмень": 1.4, "Омск": 2.3, "Томск": 3.2, "Красноярск": 3.5, "Иркутск": 4.5,
+                 "Хабаровск": 6.0, "Владивосток": 7.0, "Калининград": 0.8, "Минск": 0.3}
+# Ключ — основа слова, ищется подстрокой: «томск» раньше «омск», иначе Томск станет Омском
 ORIGIN_ALIASES = {"москв": "Москва", "петербург": "Санкт-Петербург", "питер": "Санкт-Петербург",
                   "спб": "Санкт-Петербург", "казан": "Казань", "екатеринбург": "Екатеринбург",
-                  "новосибирск": "Новосибирск", "нижн": "Нижний Новгород"}
+                  "новосибирск": "Новосибирск", "нижн": "Нижний Новгород", "самар": "Самара",
+                  "ростов": "Ростов-на-Дону", "краснодар": "Краснодар", "воронеж": "Воронеж",
+                  "уфы": "Уфа", "уфа": "Уфа", "перм": "Пермь", "челябинск": "Челябинск",
+                  "тюмен": "Тюмень", "томск": "Томск", "омск": "Омск", "красноярск": "Красноярск",
+                  "иркутск": "Иркутск", "хабаровск": "Хабаровск", "владивосток": "Владивосток",
+                  "калининград": "Калининград", "минск": "Минск"}
 
 HOTEL_WORDS = ["Бриз", "Лазурь", "Панорама", "Ривьера", "Магнолия", "Альтаир", "Кипарис",
                "Маяк", "Солнечный берег", "Гранд", "Каскад", "Олива", "Мираж", "Атлас"]
@@ -91,10 +117,15 @@ def get_destination(dest_id: str) -> dict | None:
     return next((d for d in DESTINATIONS if d["id"] == dest_id), None)
 
 
+def _stem(alias: str) -> str:
+    """Отрезаем окончание, чтобы находить косвенные падежи: «Анталью», «Турцию», «Казани»."""
+    return alias[:-1] if len(alias) > 4 and alias[-1] in "аяьйиыеоу" else alias
+
+
 def find_destination_by_text(text: str) -> dict | None:
-    t = text.lower()
+    t = text.lower().replace("ё", "е")
     for d in DESTINATIONS:
-        if any(a in t for a in d["aliases"]):
+        if any(_stem(a) in t for a in d["aliases"]):
             return d
     return None
 
@@ -130,6 +161,7 @@ def search_destinations(origin: str, month: int, trip_type: list[str],
             "train_hours": d["train_hours_from_moscow"] if origin == "Москва" else None,
             "est_total_rub": flight_rub * 2 + stay_rub,
             "est_night_rub": d["night_rub"],
+            "ski_season": month in d.get("ski_months", []),
             "data_source": "mock",
         })
     return out
@@ -231,6 +263,12 @@ def search_transfers(dest_id: str, from_point: str, to_point: str, when: str,
     for o in opts:
         o.update({"from": from_point, "to": to_point, "when": when, "data_source": "mock"})
     return [o for o in opts if o["pets_ok"] or not pets]
+
+
+def request_early_checkin(hotel_id: str, check_in: date, arrival: str) -> dict:
+    """Запрос раннего заезда (необязательная функция контракта). Детерминированный мок-ответ отеля."""
+    rng = _rng("early", hotel_id, check_in.isoformat())
+    return {"status": "confirmed" if rng.random() > 0.4 else "on_request", "data_source": "mock"}
 
 
 def checkout(cart: dict) -> dict:
