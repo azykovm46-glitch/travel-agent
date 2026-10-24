@@ -28,15 +28,16 @@ from cli import load_env  # noqa: E402
 load_env()
 
 from agent import TravelAgent  # noqa: E402
-from agent.memory import ProfileStore  # noqa: E402
+from agent.memory import ProfileStore, SessionStore  # noqa: E402
 from agent.schemas import AgentResponse  # noqa: E402
 
 app = FastAPI(title="О!дин запрос — travel agent", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
                    allow_methods=["*"], allow_headers=["*"])
-# Профили пользователей между сессиями; путь меняется MEMORY_DB (файл в .gitignore)
+# Профили пользователей и сессии в SQLite: перезапуск сервера не теряет разговоры.
+# Путь меняется MEMORY_DB (файл в .gitignore)
 MEMORY_DB = os.getenv("MEMORY_DB") or Path(__file__).resolve().parents[1] / "data" / "profiles.sqlite3"
-agent = TravelAgent(memory=ProfileStore(MEMORY_DB))
+agent = TravelAgent(memory=ProfileStore(MEMORY_DB), sessions=SessionStore(MEMORY_DB))
 
 
 class ChatRequest(BaseModel):

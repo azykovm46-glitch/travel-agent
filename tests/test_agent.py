@@ -22,7 +22,7 @@ logging.disable(logging.WARNING)      # предупреждения о сбоя
 from agent import TravelAgent  # noqa: E402
 from agent.explain import unsupported_numbers  # noqa: E402
 from agent.llm import LLM, clean_patch  # noqa: E402
-from agent.memory import ProfileStore  # noqa: E402
+from agent.memory import ProfileStore, SessionStore  # noqa: E402
 from agent.state import TripState  # noqa: E402
 from agent.understand import apply_patch, infer_hidden, rule_patch  # noqa: E402
 from tools.validator import validate_plan  # noqa: E402
@@ -354,6 +354,28 @@ class MemoryTest(unittest.TestCase):
         self.assertEqual(r.stage, "clarify")
         r = TravelAgent(today=TODAY).handle(message="на море в декабре", user_id="u4")
         self.assertEqual(r.stage, "clarify")
+
+
+class SessionPersistenceTest(unittest.TestCase):
+    def test_conversation_survives_server_restart(self):
+        path = Path(tempfile.mkdtemp()) / "agent.sqlite3"
+        a = TravelAgent(today=TODAY, sessions=SessionStore(path))
+        r = a.handle(message="Сочи в ноябре вдвоём из Москвы")
+        sid, hotel = r.session_id, r.state.plan["hotel"]["id"]
+        b = TravelAgent(today=TODAY, sessions=SessionStore(path))         # «перезапуск»: новый процесс, пустой кэш
+        restored = b.sessions.get(sid)
+        self.assertEqual(restored.plan["hotel"]["id"], hotel)
+        self.assertIn("hotels", restored.candidates)                     # кэш поиска тоже сохранён
+        r = b.handle(sid, message="давай другой отель")
+        self.assertNotEqual(r.state.plan["hotel"]["id"], hotel)
+        self.assertEqual([d["field"] for d in r.diff if d["field"] == "hotel"], ["hotel"])
+        r = b.handle(sid, action={"type": "checkout"})
+        self.assertEqual(r.stage, "booked")
+
+    def test_without_path_nothing_is_written(self):
+        store = SessionStore()
+        TravelAgent(today=TODAY, sessions=store).handle(message="Сочи в ноябре вдвоём из Москвы")
+        self.assertIsNone(store.path)
 
 
 class FakeLLM:

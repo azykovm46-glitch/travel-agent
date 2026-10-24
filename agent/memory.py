@@ -1,4 +1,7 @@
-"""Память между сессиями: профиль пользователя в SQLite.
+"""Память в SQLite: профиль пользователя между сессиями и сами сессии.
+
+SessionStore — TripState каждой сессии: перезапуск сервера (uvicorn --reload сохраняет
+файл → перезапуск) посреди демо не теряет разговор.
 
 user_id -> предпочтения из прошлых броней: город вылета, состав семьи, питание,
 ценовой уровень, обязательные условия и отказы (убранные допущения).
@@ -9,6 +12,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 
@@ -17,23 +21,61 @@ from agent.state import TripState
 MEAL_LABEL = {"BB": "завтраки", "HB": "завтрак и ужин", "AI": "всё включено"}
 
 
+@contextmanager
+def _db(path: Path):
+    """Транзакция и обязательное закрытие: `with sqlite3.connect()` само соединение не закрывает."""
+    conn = sqlite3.connect(path)
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
+class SessionStore:
+    """Сессии: кэш в памяти + запись в SQLite после каждого хода. path=None — только в памяти."""
+
+    def __init__(self, path: str | Path | None = None) -> None:
+        self._cache: dict[str, TripState] = {}
+        self.path = Path(path) if path else None
+        if self.path:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with _db(self.path) as c:
+                c.execute("CREATE TABLE IF NOT EXISTS sessions (session_id TEXT PRIMARY KEY, data TEXT NOT NULL, "
+                          "updated_at TEXT DEFAULT CURRENT_TIMESTAMP)")
+
+    def get(self, session_id: str) -> TripState | None:
+        if session_id in self._cache or not self.path:
+            return self._cache.get(session_id)
+        with _db(self.path) as c:
+            row = c.execute("SELECT data FROM sessions WHERE session_id = ?", (session_id,)).fetchone()
+        if row:
+            self._cache[session_id] = TripState.model_validate_json(row[0])
+        return self._cache.get(session_id)
+
+    def save(self, session_id: str, state: TripState) -> None:
+        self._cache[session_id] = state
+        if self.path:
+            with _db(self.path) as c:
+                c.execute("INSERT INTO sessions (session_id, data) VALUES (?, ?) ON CONFLICT(session_id) "
+                          "DO UPDATE SET data = excluded.data, updated_at = CURRENT_TIMESTAMP",
+                          (session_id, state.model_dump_json()))
+
+
 class ProfileStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self._conn() as c:
+        with _db(self.path) as c:   # соединение на операцию — безопасно для потоков API
             c.execute("CREATE TABLE IF NOT EXISTS profiles (user_id TEXT PRIMARY KEY, data TEXT NOT NULL)")
 
-    def _conn(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.path)          # соединение на операцию — безопасно для потоков API
-
     def get(self, user_id: str) -> dict | None:
-        with self._conn() as c:
+        with _db(self.path) as c:
             row = c.execute("SELECT data FROM profiles WHERE user_id = ?", (user_id,)).fetchone()
         return json.loads(row[0]) if row else None
 
     def save(self, user_id: str, profile: dict) -> None:
-        with self._conn() as c:
+        with _db(self.path) as c:
             c.execute("INSERT INTO profiles (user_id, data) VALUES (?, ?) "
                       "ON CONFLICT(user_id) DO UPDATE SET data = excluded.data",
                       (user_id, json.dumps(profile, ensure_ascii=False)))

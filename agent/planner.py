@@ -20,7 +20,7 @@ from agent.after_booking import build_reminders, request_early_checkin
 from agent.explain import (_rub, explain_destination, explain_hotel, explain_transport, MEAL_NAME,
                            unsupported_numbers)
 from agent.llm import LLM
-from agent.memory import ProfileStore, apply_profile, forget_profile_field, profile_from_booking
+from agent.memory import ProfileStore, SessionStore, apply_profile, forget_profile_field, profile_from_booking
 from agent.replan import invalidate, plan_diff
 from agent.schemas import AgentResponse, Card, QuickReply, TraceStep
 from agent.state import TripState, summarize
@@ -105,11 +105,11 @@ def describe_request(s: TripState) -> str:
 
 class TravelAgent:
     def __init__(self, llm: LLM | None = None, today: date | None = None,
-                 memory: ProfileStore | None = None) -> None:
+                 memory: ProfileStore | None = None, sessions: SessionStore | None = None) -> None:
         self.llm = llm or LLM()
         self.today = today
         self.memory = memory                  # None — без памяти между сессиями (тесты, evals)
-        self.sessions: dict[str, TripState] = {}
+        self.sessions = sessions or SessionStore()   # без пути — только в памяти
 
     # ------------------------------------------------------------------ API
     def get_state(self, session_id: str) -> TripState | None:
@@ -120,7 +120,7 @@ class TravelAgent:
         """on_event — необязательный колбэк для стриминга шагов (см. Tracer).
         user_id — чей профиль подставить в новую сессию и обновить после брони."""
         sid = session_id or uuid.uuid4().hex[:12]
-        state = self.sessions.setdefault(sid, TripState())
+        state = self.sessions.get(sid) or TripState()
         tr = Tracer(on_event)
         today = self.today or date.today()
         first_turn = state.stage == "new"
@@ -159,6 +159,7 @@ class TravelAgent:
         notes = self._notes(patch, state, resp.stage, message if first_turn else None)
         if notes:
             resp.message = " ".join(notes + [resp.message])
+        self.sessions.save(sid, state)
         return resp
 
     def _notes(self, patch: dict, state: TripState, stage: str, first_message: str | None) -> list[str]:

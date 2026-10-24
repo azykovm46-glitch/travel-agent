@@ -27,7 +27,8 @@
 - `agent/policy.py` — какие вопросы задать, следующий шаг, значения по умолчанию
 - `agent/replan.py` — что сбросить при изменении условий, дифф «было → стало»
 - `agent/explain.py` — почему / чем пожертвовали / риски; `unsupported_numbers` — проверка текста LLM на выдуманные числа
-- `agent/after_booking.py` — напоминания и ранний заезд; `agent/memory.py` — профиль пользователя (SQLite) между сессиями
+- `agent/after_booking.py` — напоминания и ранний заезд; `agent/memory.py` — SQLite: профили пользователей и сессии
+- `agent/normalize.py` — до правил: простой английский → русские ключевые слова, опечатки в гласных
 - `agent/llm.py`, `agent/prompts.py` — OpenAI-совместимый клиент (OpenRouter и др.) и промпты
 - `agent/schemas.py` — формат ответа фронтенду (`AgentResponse`, карточки, кнопки, trace)
 - `tools/mock_backend.py` — моковые направления/рейсы/отели/трансферы (заменит роль B)
