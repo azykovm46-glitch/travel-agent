@@ -89,6 +89,27 @@ class UnderstandTest(unittest.TestCase):
         self.assertEqual(p["destination_name"], "Атлантиду")
         self.assertEqual(rule_patch("из Тмутаракани в Сочи", TripState(), TODAY)["unknown_origin"], "Тмутаракани")
 
+    def test_typos_without_llm(self):
+        p = rule_patch("хачу на мори в дикабре с жиной недорага", TripState(), TODAY)
+        self.assertEqual((p["month"], p["adults"], p["budget_level"]), (12, 2, "low"))
+        self.assertIn("sea", p["trip_type"])
+        self.assertIn("дикабре→декабре", p["typo_fixes"])
+        p = rule_patch("из масквы в анталию", TripState(), TODAY)
+        self.assertEqual((p["origin_city"], p["destination_name"]), ("Москва", "Анталья"))
+
+    def test_typo_fix_does_not_invent(self):
+        p = rule_patch("хочу в горы на лыжах, вдвоём", TripState(), TODAY)
+        self.assertNotIn("sea", p.get("trip_type", []))                # «горы» не стали «морем»
+        self.assertNotIn("typo_fixes", p)
+
+    def test_english_without_llm(self):
+        p = rule_patch("beach trip in november for two from Moscow, cheap", TripState(), TODAY)
+        self.assertEqual((p["origin_city"], p["month"], p["adults"], p["budget_level"]), ("Москва", 11, 2, "low"))
+        self.assertIn("sea", p["trip_type"])
+        p = rule_patch("Antalya for 7 nights in December with a 5 year old kid from Kazan", TripState(), TODAY)
+        self.assertEqual((p["destination_name"], p["nights"], p["children_ages"], p["origin_city"], p["month"]),
+                         ("Анталья", 7, [5], "Казань", 12))
+
     def test_closer_to_sea_is_weight_not_search(self):
         p = rule_patch("хочу отель ближе к морю", TripState(), TODAY)
         self.assertEqual(p["prefer"], "location")

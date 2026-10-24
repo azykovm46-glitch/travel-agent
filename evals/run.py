@@ -18,6 +18,7 @@
   children                   — сколько детей должен понять агент
   origin, destination        — город вылета / id выбранного направления
   check_in_mmdd              — дата заезда «MM-DD»
+  month, adults, budget_level — что агент понял в итоговом состоянии
   first_message_contains     — подстрока в первом ответе агента
 """
 from __future__ import annotations
@@ -54,6 +55,10 @@ def check(expect: dict, first, final) -> list[str]:
         fails.append(f"направление {state.selection.destination_id} вместо {expect['destination']}")
     if "check_in_mmdd" in expect and plan.get("check_in", "")[5:] != expect["check_in_mmdd"]:
         fails.append(f"заезд {plan.get('check_in')} вместо …-{expect['check_in_mmdd']}")
+    for key, actual in (("month", state.dates.month or (state.dates.start and state.dates.start.month)),
+                        ("adults", state.travelers.adults), ("budget_level", state.budget.level)):
+        if key in expect and actual != expect[key]:
+            fails.append(f"{key} {actual!r} вместо {expect[key]!r}")
     if "first_message_contains" in expect and expect["first_message_contains"] not in first.message:
         fails.append(f"в первом ответе нет «{expect['first_message_contains']}»")
     return fails

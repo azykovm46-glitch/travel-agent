@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from datetime import date, timedelta
 
+from agent.normalize import english_to_russian, fix_typos
 from agent.state import TripState
 from tools import get_backend
 
@@ -73,9 +74,9 @@ def _parse_dates(t: str, today: date) -> tuple[date | None, date | None]:
 
 def rule_patch(message: str, state: TripState, today: date | None = None) -> dict:
     today = today or date.today()
-    t = message.lower().replace("ё", "е")
+    t, typos = fix_typos(english_to_russian(message.lower().replace("ё", "е")))
     be = get_backend()
-    p: dict = {}
+    p: dict = {"typo_fixes": typos} if typos else {}
 
     # --- куда и откуда --------------------------------------------------
     m = re.search(r"\bиз\s+([а-я\-]+(?:\s+[а-я]+)?)", t)

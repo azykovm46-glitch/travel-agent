@@ -6,10 +6,10 @@
 {"id": "city-break", "text": "Стамбул на 4 ночи в марте, один, люблю поесть", "expect": {"destination": "istanbul"}}
 {"id": "all-inclusive", "text": "египет всё включено 10 ночей в феврале вдвоём с двумя детьми 4 и 9 лет", "expect": {"children": 2, "destination": "sharm"}}
 {"id": "no-transfers", "text": "Казань без пересадок на 3 дня в апреле из Екатеринбурга, втроём", "expect": {"origin": "Екатеринбург", "destination": "kazan"}}
-{"id": "typos", "text": "хачу на мори в дикабре с жиной недорага"}
+{"id": "typos", "text": "хачу на мори в дикабре с жиной недорага", "expect": {"month": 12, "adults": 2, "budget_level": "low", "top_dest_not": ["kaliningrad", "sochi"]}}
 {"id": "far", "text": "Пхукет на две недели в январе вдвоём из Новосибирска", "expect": {"origin": "Новосибирск", "destination": "phuket"}}
 {"id": "offtopic", "text": "какая погода на марсе?", "expect": {"first_message_contains": "Я помогаю спланировать поездку"}}
-{"id": "english", "text": "beach trip in november for two from Moscow, cheap"}
+{"id": "english", "text": "beach trip in november for two from Moscow, cheap", "expect": {"origin": "Москва", "month": 11, "adults": 2, "budget_level": "low"}}
 {"id": "ski", "text": "в горы на лыжах в феврале вдвоём из Москвы", "expect": {"top_dest_in": ["krasnaya_polyana", "sheregesh", "dombai"], "dest_not": ["phuket", "sharm", "dubai"]}}
 {"id": "three-kids", "text": "хочу на море с тремя детьми 3, 8 и 12 лет в ноябре из Москвы", "expect": {"children": 3}}
 {"id": "exact-date", "text": "в Сочи вдвоём из Москвы 5 марта на 3 ночи", "expect": {"destination": "sochi", "check_in_mmdd": "03-05"}}
@@ -19,3 +19,4 @@
 {"id": "unknown-place", "text": "хочу в Атлантиду", "expect": {"first_message_contains": "Атлантид"}}
 {"id": "unknown-origin", "text": "из Тмутаракани в Сочи в ноябре вдвоём", "expect": {"first_message_contains": "Тмутаракан", "destination": "sochi"}}
 {"id": "luxury-cheap", "text": "люкс за 30 тысяч в Дубай вдвоём из Москвы в декабре", "expect": {"first_message_contains": "Люкс", "destination": "dubai"}}
+{"id": "english-family", "text": "Antalya for 7 nights in December with a 5 year old kid from Kazan", "expect": {"destination": "antalya", "origin": "Казань", "children": 1, "month": 12}}

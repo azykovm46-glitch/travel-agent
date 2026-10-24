@@ -145,7 +145,8 @@ class TravelAgent:
                     source = f"правила (LLM не ответила: {getattr(self.llm, 'last_error', None) or 'пустой ответ'})"
                 else:
                     source = "правила (LLM выключена)"
-                h["detail"] = source + f": {', '.join(k for k in patch if k != 'intent') or 'без новых данных'}"
+                h["detail"] = source + f": {', '.join(k for k in patch if k not in ('intent', 'typo_fixes')) or 'без новых данных'}" \
+                    + (f"; исправил опечатки: {', '.join(rules['typo_fixes'])}" if rules.get("typo_fixes") else "")
         extra_changed: set[str] = set()
         if action:
             patch, extra_changed = self._action_to_patch(action, state, patch)
