@@ -49,6 +49,7 @@ class Constraints(BaseModel):
     max_travel_hours: float | None = None   # в одну сторону
     direct_only: bool = False
     transport: Literal["any", "plane", "train"] = "any"
+    max_beach_m: int | None = None          # отель не дальше от пляжа, м
 
 
 class Weights(BaseModel):
@@ -94,6 +95,7 @@ class TripState(BaseModel):
     constraints: Constraints = Field(default_factory=Constraints)
     must_have: list[str] = Field(default_factory=list)   # breakfast, free_cancellation, family_room, pets_allowed, all_inclusive
     weights: Weights = Field(default_factory=Weights)
+    near: Literal["beach", "center"] | None = None       # от чего считать «расположение» отеля
     assumptions: list[Assumption] = Field(default_factory=list)
     selection: Selection = Field(default_factory=Selection)
 
@@ -104,12 +106,17 @@ class TripState(BaseModel):
     confirmed: list[str] = Field(default_factory=list)   # слоты, которые назвал пользователь: origin, dates, travelers
     clarify_rounds: int = 0
     order: dict[str, Any] | None = None
+    user_id: str | None = None                    # для памяти между сессиями (agent/memory.py)
 
     # ---- вспомогательное -------------------------------------------------
     def add_assumption(self, field: str, value: str, reason: str,
                        source: str = "inferred") -> None:
         self.assumptions = [a for a in self.assumptions if a.field != field]
         self.assumptions.append(Assumption(field=field, value=value, reason=reason, source=source))
+
+    def location_by_beach(self) -> bool:
+        """Расположение отеля меряем до пляжа: если попросили «ближе к морю» или едем на море."""
+        return self.near == "beach" or (self.near is None and "sea" in self.trip_type)
 
     def drop_assumption(self, field: str) -> None:
         self.assumptions = [a for a in self.assumptions if a.field != field]

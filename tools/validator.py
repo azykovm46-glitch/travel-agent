@@ -62,11 +62,18 @@ def validate_plan(plan: dict, travelers_total: int, pets: int, budget_rub: int |
         h = round((leave_hotel - hotel_checkout).total_seconds() / 3600, 1)
         add("info", "late_departure", f"После выезда в {hotel['check_out']} до дороги ещё ~{h:g} ч",
             "запросить поздний выезд или камеру хранения")
+    elif leave_hotel.date() < hotel_checkout.date():
+        add("warning", "leave_day_before",
+            f"Выезжать из отеля нужно {leave_hotel:%d.%m в %H:%M} — накануне дня выезда, последняя ночь не понадобится",
+            "взять более поздний обратный рейс")
     elif leave_hotel < hotel_checkout - timedelta(hours=8):
         add("info", "early_departure", f"Выезжать из отеля нужно в {leave_hotel:%H:%M} — рано утром")
 
-    if hotel["max_guests"] < travelers_total:
+    rooms = hotel.get("rooms", 1)
+    if hotel["max_guests"] * rooms < travelers_total:
         add("error", "capacity", f"Номер до {hotel['max_guests']} гостей, а едет {travelers_total}")
+    elif rooms > 1:
+        add("info", "several_rooms", f"Берём {rooms} номера: в одном номере до {hotel['max_guests']} гостей")
     if pets and not hotel.get("pets_allowed"):
         add("error", "pets", "Отель не принимает животных")
     if pets and tin and not tin.get("pets_ok", True):

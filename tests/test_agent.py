@@ -13,7 +13,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ["AGENT_OFFLINE"] = "1"
 
+import logging  # noqa: E402
+import tempfile  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+logging.disable(logging.WARNING)      # предупреждения о сбоях LLM в тестах ожидаемы
+
 from agent import TravelAgent  # noqa: E402
+from agent.explain import unsupported_numbers  # noqa: E402
+from agent.llm import LLM, clean_patch  # noqa: E402
+from agent.memory import ProfileStore  # noqa: E402
 from agent.state import TripState  # noqa: E402
 from agent.understand import apply_patch, infer_hidden, rule_patch  # noqa: E402
 from tools.validator import validate_plan  # noqa: E402
@@ -54,6 +63,35 @@ class UnderstandTest(unittest.TestCase):
     def test_budget_number(self):
         self.assertEqual(rule_patch("бюджет 150 тысяч", TripState())["budget_total_rub"], 150_000)
         self.assertEqual(rule_patch("до 80к на двоих", TripState())["budget_total_rub"], 80_000)
+
+    def test_several_children_with_ages(self):
+        p = rule_patch("на море с тремя детьми 3, 8 и 12 лет", TripState(), TODAY)
+        self.assertEqual(p["children_ages"], [3, 8, 12])
+        p = rule_patch("египет вдвоём с двумя детьми 4 и 9 лет", TripState(), TODAY)
+        self.assertEqual(p["children_ages"], [4, 9])
+        p = rule_patch("трое детей, без возраста", TripState(), TODAY)
+        self.assertEqual(len(p["children_ages"]), 3)
+
+    def test_exact_dates(self):
+        p = rule_patch("в Сочи 5 марта на 3 ночи", TripState(), TODAY)
+        self.assertEqual(p["start"], "2027-03-05")                  # март уже прошёл — следующий год
+        p = rule_patch("с 14 по 21 ноября", TripState(), TODAY)
+        self.assertEqual((p["start"], p["end"]), ("2026-11-14", "2026-11-21"))
+        p = rule_patch("с 28 декабря по 3 января", TripState(), TODAY)
+        self.assertEqual((p["start"], p["end"]), ("2026-12-28", "2027-01-03"))
+
+    def test_declined_destination_names(self):
+        self.assertEqual(rule_patch("хочу в Анталью", TripState(), TODAY)["destination_name"], "Анталья")
+        self.assertEqual(rule_patch("летим в Турцию", TripState(), TODAY)["destination_name"], "Анталья")
+
+    def test_unknown_place_is_kept_for_honest_answer(self):
+        p = rule_patch("хочу в Атлантиду", TripState(), TODAY)
+        self.assertEqual(p["destination_name"], "Атлантиду")
+        self.assertEqual(rule_patch("из Тмутаракани в Сочи", TripState(), TODAY)["unknown_origin"], "Тмутаракани")
+
+    def test_closer_to_sea_is_weight_not_search(self):
+        p = rule_patch("хочу отель ближе к морю", TripState(), TODAY)
+        self.assertEqual(p["prefer"], "location")
 
 
 class FlowTest(unittest.TestCase):
@@ -109,6 +147,193 @@ class FlowTest(unittest.TestCase):
         replan = [s for s in r.trace if s.step == "replan"]
         self.assertTrue(replan and "переищу: ничего" in replan[0].detail)
 
+    def test_closer_to_sea_reranks_hotels(self):
+        a = new_agent()
+        r = a.handle(message="Сочи в ноябре вдвоём из Москвы")       # море не названо — до сих пор мерили до центра
+        before = r.state.plan["hotel"]["beach_m"]
+        loc = r.state.weights.location
+        r = a.handle(r.session_id, message="хочу отель ближе к морю")
+        self.assertGreater(r.state.weights.location, loc)
+        self.assertLess(r.state.plan["hotel"]["beach_m"], before)    # «ближе» — ближе, чем было
+        replan = next(s.detail for s in r.trace if s.step == "replan")
+        self.assertIn("переищу: ничего", replan)                      # только переранжирование
+
+    def test_ski_does_not_offer_beach(self):
+        a = new_agent()
+        r = a.handle(message="в горы на лыжах в феврале вдвоём из Москвы")
+        top = [c.data for c in r.cards if c.type == "destination"]
+        self.assertIn("ski", top[0]["tags"])
+        self.assertNotIn("phuket", [d["id"] for d in top])
+
+    def test_ski_plan_has_no_stitch_errors(self):
+        a = new_agent()
+        r = a.handle(message="в горы на лыжах в феврале вдвоём из Москвы")
+        r = a.handle(r.session_id, action=r.quick_replies[0].action)  # у курортов долгий трансфер
+        self.assertFalse([i for i in r.state.plan["issues"] if i["level"] == "error"])
+
+    def test_big_family_gets_several_rooms(self):
+        a = new_agent()
+        r = a.handle(message="Шарм в ноябре вдвоём с тремя детьми 3, 8 и 12 лет из Москвы")
+        hotel = r.state.plan["hotel"]
+        self.assertGreaterEqual(hotel["max_guests"] * hotel.get("rooms", 1), 5)
+        self.assertTrue(any(q.action == {"type": "checkout"} for q in r.quick_replies))
+
+    def test_exact_date_reaches_plan(self):
+        a = new_agent()
+        r = a.handle(message="в Сочи вдвоём из Москвы 5 марта на 3 ночи")
+        self.assertEqual((r.state.plan["check_in"], r.state.plan["check_out"]), ("2027-03-05", "2027-03-08"))
+
+    def test_unknown_destination_is_named(self):
+        a = new_agent()
+        r = a.handle(message="хочу в Атлантиду")
+        self.assertIn("Атлантид", r.message)
+        self.assertNotIn("..", r.message)
+
+    def test_unknown_origin_is_named(self):
+        a = new_agent()
+        r = a.handle(message="из Тмутаракани в Сочи в ноябре вдвоём")
+        self.assertIn("Тмутаракан", r.message)
+
+    def test_regional_origin_known(self):
+        a = new_agent()
+        r = a.handle(message="из Владивостока в Анталью в ноябре вдвоём")
+        self.assertEqual(r.state.origin_city, "Владивосток")
+        self.assertEqual(r.state.selection.destination_id, "antalya")
+        self.assertEqual(r.stage, "plan")
+
+    def test_destination_change_shows_in_diff(self):
+        a = new_agent()
+        r = a.handle(message="Сочи вдвоём из Москвы в ноябре")
+        r = a.handle(r.session_id, message="а в Шарм?")
+        self.assertEqual(r.diff[0]["field"], "destination")
+
+    def test_direct_only_reranks_flights_without_new_search(self):
+        a = new_agent()
+        r = a.handle(message="Анталья в ноябре вдвоём из Москвы")
+        r = a.handle(r.session_id, message="а можно без пересадок?")
+        self.assertEqual((r.state.plan["outbound"]["stops"], r.state.plan["return"]["stops"]), (0, 0))
+        self.assertIn("переищу: ничего", next(s.detail for s in r.trace if s.step == "replan"))
+
+    def test_other_hotel_picks_next_and_keeps_flights(self):
+        a = new_agent()
+        r = a.handle(message="Сочи в ноябре вдвоём из Москвы")
+        first, out = r.state.plan["hotel"]["id"], r.state.plan["outbound"]["id"]
+        r = a.handle(r.session_id, message="давай другой отель")
+        self.assertNotEqual(r.state.plan["hotel"]["id"], first)
+        self.assertEqual(r.state.plan["outbound"]["id"], out)
+        self.assertEqual([d["field"] for d in r.diff if d["field"] == "hotel"], ["hotel"])
+
+    def test_dog_joins_after_plan(self):
+        a = new_agent()
+        r = a.handle(message="Сочи в ноябре вдвоём из Москвы")
+        r = a.handle(r.session_id, message="с нами едет собака")
+        self.assertTrue(r.state.plan["hotel"]["pets_allowed"])
+        self.assertEqual(r.state.plan["transfer_in"]["kind"], "taxi")
+        self.assertTrue(any(s.step == "replan" for s in r.trace))
+
+    def test_after_booking_reminders_and_early_checkin(self):
+        a = new_agent()
+        r = a.handle(message="Сочи в ноябре вдвоём из Москвы")
+        r = a.handle(r.session_id, action={"type": "checkout"})
+        order = r.state.order
+        times = [x["at"] for x in order["reminders"]]
+        self.assertEqual(times, sorted(times))
+        self.assertTrue(any("онлайн-регистрация" in x["text"].lower() for x in order["reminders"]))
+        r = a.handle(r.session_id, message="можно заселиться пораньше?")
+        self.assertEqual(r.stage, "booked")
+        svc = r.state.order["services"]
+        self.assertEqual([s["kind"] for s in svc], ["early_checkin"])
+        self.assertIn(svc[0]["status"], ("confirmed", "on_request", "declined"))
+        self.assertNotIn("Запросить ранний заезд", [q.label for q in r.quick_replies])
+        r = a.handle(r.session_id, message="напомни, что когда")
+        self.assertTrue(r.message.startswith("Напомню:"))
+        self.assertEqual(r.state.order["order_id"], order["order_id"])      # бронь не трогали
+
+    def test_closer_to_sea_respects_other_filters(self):
+        a = new_agent()
+        r = a.handle(message="Сочи на неделю в ноябре вдвоём из Москвы с собакой")
+        before = r.state.plan["hotel"]
+        r = a.handle(r.session_id, message="хочу отель ближе к морю")
+        self.assertIsNotNone(r.state.plan)                             # не «не нашёл отелей»
+        self.assertTrue(r.state.plan["hotel"]["pets_allowed"])
+        self.assertLessEqual(r.state.plan["hotel"]["beach_m"], before["beach_m"])
+
+    def test_no_hotels_means_nothing_to_book(self):
+        a = new_agent()
+        r = a.handle(message="Сочи в ноябре вдвоём из Москвы")
+        state = r.state
+        state.constraints.max_beach_m = 1                               # условие, которому не удовлетворить
+        state.candidates.pop("hotels")
+        r = a.handle(r.session_id, message="с бесплатной отменой")
+        self.assertIsNone(r.state.plan)
+        r = a.handle(r.session_id, action={"type": "checkout"})
+        self.assertNotEqual(r.stage, "booked")                          # старый план молча не бронируем
+        r = a.handle(r.session_id, action={"type": "change_destination"})
+        self.assertEqual(r.stage, "inspire")
+
+    def test_night_arrival_keeps_check_in_day(self):
+        a = new_agent()
+        r = a.handle(message="из Владивостока в Шарм с 29 декабря по 4 января вдвоём")
+        plan = r.state.plan
+        self.assertEqual(plan["check_in"], "2026-12-29")
+        self.assertLessEqual(plan["outbound"]["arrival"], "2026-12-30T04:30")
+
+    def test_offtopic_is_gently_redirected(self):
+        a = new_agent()
+        r = a.handle(message="какая погода на марсе?")
+        self.assertTrue(r.message.startswith("Я помогаю спланировать поездку"))
+        r = a.handle(r.session_id, message="не знаю")                  # второй ход — без нотаций
+        self.assertNotIn("Я помогаю", r.message)
+
+    def test_luxury_with_tiny_budget_is_called_out(self):
+        a = new_agent()
+        r = a.handle(message="люкс за 30 тысяч в Дубай вдвоём из Москвы в декабре")
+        self.assertIn("люкс", r.message.lower())
+
+
+class MemoryTest(unittest.TestCase):
+    def setUp(self):
+        self.store = ProfileStore(Path(tempfile.mkdtemp()) / "profiles.sqlite3")
+
+    def book(self, user_id, text, today=TODAY):
+        a = TravelAgent(today=today, memory=self.store)
+        r = a.handle(message=text, user_id=user_id)
+        return a.handle(r.session_id, action={"type": "checkout"})
+
+    def test_profile_saved_after_booking_and_applied_next_time(self):
+        self.book("u1", "Анталья в ноябре вдвоём с ребёнком 5 лет из Казани с собакой, недорого")
+        a = TravelAgent(today=date(2027, 6, 1), memory=self.store)          # через полгода, новый год
+        r = a.handle(message="хочу на море в июле", user_id="u1")
+        s = r.state
+        self.assertNotEqual(r.stage, "clarify")
+        self.assertEqual((s.origin_city, s.travelers.adults, s.travelers.children_ages, s.travelers.pets),
+                         ("Казань", 2, [6], 1))                                 # ребёнок подрос
+        self.assertEqual(s.budget.level, "low")
+        self.assertTrue({"profile_origin", "profile_travelers"} <= {x.field for x in s.assumptions if x.source == "profile"})
+        self.assertTrue(any(t.step == "profile" for t in r.trace))
+
+    def test_user_words_override_profile(self):
+        self.book("u2", "Сочи в ноябре вдвоём из Казани")
+        a = TravelAgent(today=TODAY, memory=self.store)
+        r = a.handle(message="на море в декабре из Москвы", user_id="u2")
+        self.assertEqual(r.state.origin_city, "Москва")
+        self.assertNotIn("profile_origin", [x.field for x in r.state.assumptions])
+
+    def test_removing_profile_assumption_reverts_value(self):
+        self.book("u3", "Сочи в ноябре вдвоём из Казани")
+        a = TravelAgent(today=TODAY, memory=self.store)
+        r = a.handle(message="на море в декабре", user_id="u3")
+        r = a.handle(r.session_id, action={"type": "remove_assumption", "field": "profile_origin"})
+        self.assertNotEqual(r.state.origin_city, "Казань")
+        self.assertNotIn("profile_origin", [x.field for x in r.state.assumptions])
+
+    def test_other_user_and_no_memory_get_nothing(self):
+        self.book("u4", "Сочи в ноябре вдвоём из Казани")
+        r = TravelAgent(today=TODAY, memory=self.store).handle(message="на море в декабре", user_id="someone-else")
+        self.assertEqual(r.stage, "clarify")
+        r = TravelAgent(today=TODAY).handle(message="на море в декабре", user_id="u4")
+        self.assertEqual(r.stage, "clarify")
+
 
 class FakeLLM:
     """Подмена LLM: проверяем, что патч модели перекрывает правила и текст модели доходит до ответа."""
@@ -130,6 +355,115 @@ class LLMPathTest(unittest.TestCase):
         self.assertEqual(r.stage, "inspire")                          # без лишних вопросов
         self.assertTrue(r.message.startswith("[LLM]"))
         self.assertIn("LLM", r.trace[0].detail)
+
+
+class LyingLLM(FakeLLM):
+    """Пишет текст с ценой, которой нет в фактах."""
+
+    def write(self, facts):
+        return f"Отличный вариант, итого 99 999 ₽ — этап {facts['stage']}."
+
+
+class HonestLLM(FakeLLM):
+    def write(self, facts):
+        return f"Собрал поездку, итого {facts['total_rub']:,} ₽.".replace(",", " ") if "total_rub" in facts else "Готово."
+
+
+class WriterGuardTest(unittest.TestCase):
+    def test_invented_number_falls_back_to_template(self):
+        a = TravelAgent(llm=LyingLLM(), today=TODAY)
+        r = a.handle(message="Сочи в ноябре вдвоём из Москвы")
+        self.assertNotIn("99 999", r.message)
+        self.assertTrue(r.message.startswith("Поездка — Сочи"))
+        self.assertIn("отброшен", next(s.detail for s in r.trace if s.step == "write"))
+
+    def test_numbers_from_facts_pass(self):
+        a = TravelAgent(llm=HonestLLM(), today=TODAY)
+        r = a.handle(message="Сочи в ноябре вдвоём из Москвы")
+        self.assertEqual(r.message, f"Собрал поездку, итого {r.state.plan['total_rub']:,} ₽.".replace(",", " "))
+
+    def test_number_check_handles_dates_times_and_spaces(self):
+        facts = {"dates": "14.11–21.11", "outbound": {"departure": "2026-11-14T09:15", "duration_h": 4.0},
+                 "total_rub": 175375}
+        self.assertEqual(unsupported_numbers("14.11 в 09:15, 4 ч в пути, итого 175 375 ₽", facts), [])
+        self.assertEqual(unsupported_numbers("итого 175 000 ₽, вода 26°", facts), ["175000", "26"])
+
+
+class ApiError(Exception):
+    def __init__(self, status_code=None):
+        super().__init__(f"HTTP {status_code}")
+        self.status_code = status_code
+
+
+class FakeClient:
+    """Подмена openai.OpenAI: отвечает по сценарию в зависимости от режима запроса."""
+
+    def __init__(self, tools=None, json_mode=None, text=None):
+        self.answers = {"tools": tools, "json": json_mode, "text": text}
+        self.calls = []
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+    def create(self, **kw):
+        mode = "tools" if "tools" in kw else "json" if "response_format" in kw else "text"
+        self.calls.append(mode)
+        ans = self.answers[mode]
+        if isinstance(ans, Exception):
+            raise ans
+        if mode == "tools":
+            calls = [SimpleNamespace(function=SimpleNamespace(arguments=ans))] if ans else []
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=calls, content=None))])
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=None, content=ans))])
+
+
+def llm_with(client) -> LLM:
+    llm = LLM()
+    llm.enabled, llm.model, llm._client = True, "fake", client
+    return llm
+
+
+class LLMClientTest(unittest.TestCase):
+    def test_falls_back_to_json_mode_and_remembers_it(self):
+        client = FakeClient(tools=ApiError(400), json_mode='{"intent": "plan", "month": 11}')
+        llm = llm_with(client)
+        self.assertEqual(llm.extract_patch("в ноябре", "{}", "2026-10-25"), {"intent": "plan", "month": 11})
+        self.assertEqual(llm.mode, "json")
+        llm.extract_patch("в ноябре", "{}", "2026-10-25")
+        self.assertEqual(client.calls, ["tools", "json", "json"])     # tools больше не пробуем
+
+    def test_text_mode_extracts_json_from_prose(self):
+        client = FakeClient(tools=ApiError(400), json_mode=ApiError(400),
+                            text='Вот патч:\n```json\n{"intent": "plan", "adults": 2}\n```')
+        self.assertEqual(llm_with(client).extract_patch("вдвоём", "{}", "2026-10-25"), {"intent": "plan", "adults": 2})
+
+    def test_outage_pauses_llm_instead_of_waiting_every_turn(self):
+        client = FakeClient(tools=ApiError(None))                       # таймаут / нет сети
+        llm = llm_with(client)
+        self.assertIsNone(llm.extract_patch("x", "{}", "2026-10-25"))
+        self.assertEqual(llm.last_error, "HTTP None")                   # в trace видна настоящая причина
+        self.assertIsNone(llm.write({"stage": "plan"}))
+        self.assertIsNone(llm.extract_patch("y", "{}", "2026-10-25"))
+        self.assertEqual(client.calls, ["tools"])                       # следующие вызовы не пошли в сеть
+        self.assertIn("пауза", llm.last_error)
+
+    def test_garbage_from_model_is_dropped(self):
+        raw = {"intent": "plan", "month": "13", "adults": "2", "start": "завтра", "children_ages": [5, "x", 40],
+               "transport": "телепорт", "budget_total_rub": "150000", "hack": 1}
+        self.assertEqual(clean_patch(raw), {"intent": "plan", "adults": 2, "children_ages": [5],
+                                            "budget_total_rub": 150000})
+        self.assertEqual(clean_patch({"name": "update_trip_state", "arguments": {"intent": "checkout"}}),
+                         {"intent": "checkout"})
+
+    def test_agent_survives_llm_outage_mid_scenario(self):
+        client = FakeClient(tools='{"intent": "plan", "destination_name": "Сочи", "month": 11, "adults": 2, '
+                                  '"origin_city": "Москва"}')
+        a = TravelAgent(llm=llm_with(client), today=TODAY)
+        r = a.handle(message="Сочи в ноябре вдвоём из Москвы")
+        self.assertEqual(r.stage, "plan")
+        client.answers["tools"] = ApiError(None)                        # API упал посреди демо
+        r = a.handle(r.session_id, message="а если на 2 дня позже?")
+        self.assertEqual(r.stage, "plan")
+        self.assertTrue(any(d["field"] == "dates" for d in r.diff))
+        self.assertIn("LLM не ответила", r.trace[0].detail)
 
 
 class ValidatorTest(unittest.TestCase):

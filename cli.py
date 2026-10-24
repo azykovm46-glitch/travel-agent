@@ -47,6 +47,10 @@ def show(resp, trace: bool) -> list:
             print("  ~ Допущения: " + "; ".join(f"{a['value']} ({a['reason']})" for a in d["items"]))
         elif c.type == "order":
             print(f"  ✓ Заказ {d['order_id']}: {d['paid_rub']:,} ₽".replace(",", " "))
+            for sv in d.get("services", []):
+                print(f"    + {sv['title']}: {sv['status_text']}")
+            for rm in d.get("reminders", [])[:6]:
+                print(f"    ⏰ {rm['at'][8:10]}.{rm['at'][5:7]} {rm['at'][11:16]} {rm['text']}")
     for row in resp.diff:
         print(f"  Δ {row['label']}: {row['before']} → {row['after']}")
     replies = list(resp.quick_replies) + [o for q in resp.questions for o in q.options]

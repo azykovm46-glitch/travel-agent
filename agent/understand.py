@@ -20,13 +20,59 @@ NUM_WORDS = {"один": 1, "одна": 1, "день": 1, "два": 2, "две":
              "пять": 5, "шесть": 6, "семь": 7, "неделю": 7, "десять": 10}
 ORDINALS = {"перв": 1, "втор": 2, "трет": 3, "четв": 4, "пят": 5}
 _NUM = r"(\d+|один|одна|два|две|три|четыре|пять|шесть|семь|десять)"
+KIDS_COUNT = {"двое": 2, "двоих": 2, "двумя": 2, "двух": 2, "трое": 3, "троих": 3, "тремя": 3,
+              "трех": 3, "четверо": 4, "четырьмя": 4}
+_KIDS_NUM = r"(\d+|" + "|".join(KIDS_COUNT) + r")"
+MONTH_STEMS = {"январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5, "июн": 6, "июл": 7,
+               "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12}
+_MONTH_GEN = r"(январ|феврал|март|апрел|ма(?=[яй])|июн|июл|август|сентябр|октябр|ноябр|декабр)\w*"
+# «на Новый год», «в Майские» — заглавная буква, но не место
+NOT_PLACES = ("новый", "новог", "рождеств", "майск", "выходн", "январ", "феврал", "март", "апрел",
+              "июн", "июл", "август", "сентябр", "октябр", "ноябр", "декабр")
+PREFER_LABEL = {"price": "цена", "travel_time": "время в пути", "location": "расположение",
+                "rating": "рейтинг отеля", "cancellation": "бесплатная отмена", "meals": "питание"}
+# (фраза, какой вес поднять, от чего мерить расположение)
+PREFER = [(r"ближе к (мор|пляж)\w*|рядом с (мор|пляж)\w*|у моря|первая линия|первой линии", "location", "beach"),
+          (r"ближе к центру|в центре|рядом с центром", "location", "center"),
+          (r"рейтинг\w* (повыше|получше|выше)|получше отел|отел\w* получше|хорош\w* отзыв", "rating", None)]
 
 
 def _num(tok: str) -> int:
     return int(tok) if tok.isdigit() else NUM_WORDS.get(tok, 1)
 
 
-def rule_patch(message: str, state: TripState) -> dict:
+def _future_date(day: int, month: int, today: date) -> date | None:
+    """Ближайшая будущая дата с таким днём и месяцем: «5 марта» в октябре — это март следующего года."""
+    try:
+        d = date(today.year, month, day)
+        return d if d >= today else date(today.year + 1, month, day)
+    except ValueError:            # «31 февраля»
+        return None
+
+
+def _parse_dates(t: str, today: date) -> tuple[date | None, date | None]:
+    """«5 марта», «с 14 по 21 ноября», «с 28 декабря по 3 января»."""
+    m = re.search(rf"\b(\d{{1,2}})(?:\s+{_MONTH_GEN})?\s*(?:по|до|-|–|—)\s*(\d{{1,2}})\s+{_MONTH_GEN}", t)
+    if m:
+        m2 = MONTH_STEMS[m.group(4)]
+        start = _future_date(int(m.group(1)), MONTH_STEMS[m.group(2)] if m.group(2) else m2, today)
+        if not start:
+            return None, None
+        try:
+            end = date(start.year, m2, int(m.group(3)))
+        except ValueError:
+            return start, None
+        if end <= start:
+            end = date(end.year + 1, end.month, end.day)
+        return start, end
+    m = re.search(rf"\b(\d{{1,2}})\s+{_MONTH_GEN}", t)
+    if m:
+        return _future_date(int(m.group(1)), MONTH_STEMS[m.group(2)], today), None
+    return None, None
+
+
+def rule_patch(message: str, state: TripState, today: date | None = None) -> dict:
+    today = today or date.today()
     t = message.lower().replace("ё", "е")
     be = get_backend()
     p: dict = {}
@@ -35,17 +81,33 @@ def rule_patch(message: str, state: TripState) -> dict:
     m = re.search(r"\bиз\s+([а-я\-]+(?:\s+[а-я]+)?)", t)
     if m and (origin := be.normalize_origin(m.group(1))):
         p["origin_city"] = origin
+    elif m := re.search(r"(?i:\bиз)\s+([А-ЯЁ][а-яё\-]+)", message):
+        p["unknown_origin"] = m.group(1)          # город с заглавной, но мы его не знаем — скажем честно
     dest = be.find_destination_by_text(re.sub(r"\bиз\s+[а-я\-]+", "", t))
     if dest:
         p["destination_name"] = dest["name"]
+    else:
+        for m in re.finditer(r"(?i:\b(?:в|во|на))\s+([А-ЯЁ][а-яёА-ЯЁ\-]+)", message):
+            if not m.group(1).lower().startswith(NOT_PLACES):
+                p["destination_name"] = m.group(1)   # не нашли в справочнике — planner скажет об этом
+                break
+    for pat, field, near in PREFER:
+        if re.search(pat, t):
+            p["prefer"] = field
+            if near:
+                p["near"] = near
+            t_types = re.sub(pat, "", t)          # «ближе к морю» — про отель, а не про тип отдыха
+            break
+    else:
+        t_types = t
     types = []
-    if re.search(r"мор|пляж|тепл|позагора|купат", t): types.append("sea")
-    if re.search(r"город|экскурс|музе|прогул", t): types.append("city")
-    if re.search(r"\bгор[ыа]|природ|поход", t): types.append("nature")
-    if re.search(r"лыж|сноуборд|горнолыж", t): types.append("ski")
-    if re.search(r"гастро|поесть|кухн", t): types.append("food")
+    if re.search(r"мор|пляж|тепл|позагора|купат", t_types): types.append("sea")
+    if re.search(r"город|экскурс|музе|прогул", t_types): types.append("city")
+    if re.search(r"\bгор[ыа]|природ|поход", t_types): types.append("nature")
+    if re.search(r"лыж|сноуборд|горнолыж", t_types): types.append("ski")
+    if re.search(r"гастро|поесть|кухн", t_types): types.append("food")
     if types: p["trip_type"] = types
-    m = re.search(r"\b(к|на|в)\s+(тепл\w*\s+)?(мор\w*|пляж\w*|гор\w*)", t)
+    m = re.search(r"\b(к|на|в)\s+(тепл\w*\s+)?(мор\w*|пляж\w*|гор\w*)", t_types)
     if m: p["destination_hint"] = m.group(0)
 
     # --- когда ----------------------------------------------------------
@@ -53,6 +115,11 @@ def rule_patch(message: str, state: TripState) -> dict:
         if re.search(pat, t):
             p["month"] = num
             break
+    start, end = _parse_dates(t, today)
+    if start:
+        p["start"], p["month"] = start.isoformat(), start.month
+    if end:
+        p["end"] = end.isoformat()
     m = re.search(rf"на\s+{_NUM}\s*(дн\w*|ноч\w*|сут\w*|день)\b(?!\s*(позже|раньше))", t)
     if m: p["nights"] = _num(m.group(1))
     if re.search(r"на неделю", t): p["nights"] = 7
@@ -69,14 +136,15 @@ def rule_patch(message: str, state: TripState) -> dict:
     m = re.search(r"(\d+)\s*взросл", t)
     if m: p["adults"] = int(m.group(1))
     if re.search(r"\b(один|одна|соло)\b", t) and "adults" not in p and "на один" not in t: p["adults"] = 1
-    ages = [int(a) for a in re.findall(r"(\d{1,2})\s*(?:лет|год|года)", t) if int(a) < 18]
-    if re.search(r"с реб|с сын|с доч|ребенк", t):
-        p["children_ages"] = ages[:1] or [7]
-    if re.search(r"с детьми|дет(ей|и)\b", t):
-        m = re.search(r"(\d+|двое|трое)\s*дет", t)
-        n = {"двое": 2, "трое": 3}.get(m.group(1), None) if m else None
-        n = n or (int(m.group(1)) if m and m.group(1).isdigit() else max(2, len(ages)))
+    # возрасты списком: «5 лет», «4 и 9 лет», «3, 8 и 12 лет»
+    ages = [int(a) for grp in re.findall(r"((?:\d{1,2}\s*(?:,|и)\s*)*\d{1,2})\s*(?:лет|год)", t)
+            for a in re.findall(r"\d+", grp) if int(a) < 18]
+    m = re.search(rf"\b{_KIDS_NUM}\s+(?:дет|реб)", t)
+    if m or re.search(r"\bдет(ей|и|ьми)\b", t):
+        n = (int(m.group(1)) if m.group(1).isdigit() else KIDS_COUNT[m.group(1)]) if m else max(2, len(ages))
         p["children_ages"] = (ages + [7] * n)[:n]
+    elif re.search(r"с реб|с сын|с доч|ребенк", t):
+        p["children_ages"] = ages[:1] or [7]
     if re.search(r"с собак|с пс[оа]|с кот|с кошк|с питомц|собака", t): p["pets"] = 1
 
     # --- бюджет -----------------------------------------------------------
@@ -109,8 +177,14 @@ def rule_patch(message: str, state: TripState) -> dict:
     if must: p["must_have_add"] = must
 
     # --- намерение ----------------------------------------------------------
-    if re.search(r"оформ|бронир|оплат|покупа|\bбер(у|ем)\b все|готов купить", t):
+    if state.order and re.search(r"ранн\w* (заезд|заселен)|заселиться (пораньше|раньше)|заехать (пораньше|раньше)", t):
+        p["intent"] = "early_checkin"
+    elif state.order and re.search(r"напомина|напомни|что когда|расписани", t):
+        p["intent"] = "reminders"
+    elif re.search(r"оформ|бронир|оплат|покупа|\bбер(у|ем)\b все|готов купить", t):
         p["intent"] = "checkout"
+    elif state.plan and re.search(r"друг(ой|ие|ую) (отел|гостиниц)|(отел\w*|гостиниц\w*) (не нравит|друг)|смени\w* отел", t):
+        p.update({"intent": "select", "select_kind": "hotel", "select_other": True})
     else:
         idx = None
         for stem, n in ORDINALS.items():
@@ -153,6 +227,7 @@ def apply_patch(state: TripState, p: dict) -> set[str]:
 
     if "origin_city" in p:
         setf("origin_city", state, "origin_city", be.normalize_origin(p["origin_city"]) or p["origin_city"])
+        state.drop_assumption("profile_origin")      # пользователь сказал сам — профиль больше не нужен
         _confirm(state, "origin")
     if p.get("destination_hint"):
         state.destination_hint = p["destination_hint"]
@@ -197,9 +272,11 @@ def apply_patch(state: TripState, p: dict) -> set[str]:
         setf("travelers", tr, "adults", p["adults"])
         _confirm(state, "travelers")
         _confirm(state, "adults")
+        state.drop_assumption("profile_travelers")
         state.drop_assumption("adults")
     if p.get("children_ages") is not None and "children_ages" in p:
         setf("travelers", tr, "children_ages", list(p["children_ages"]))
+        state.drop_assumption("profile_travelers")
         _confirm(state, "travelers")
     if p.get("pets") is not None and "pets" in p:
         setf("travelers", tr, "pets", p["pets"])
@@ -210,6 +287,7 @@ def apply_patch(state: TripState, p: dict) -> set[str]:
         state.drop_assumption("budget")
     if p.get("budget_level"):
         setf("budget", state.budget, "level", p["budget_level"])
+        state.drop_assumption("profile_budget")
     if p.get("budget_factor"):
         base = state.budget.total_rub or (state.plan or {}).get("total_rub")
         if base:
@@ -233,6 +311,24 @@ def apply_patch(state: TripState, p: dict) -> set[str]:
         if m in state.must_have:
             state.must_have.remove(m)
             changed.add("must_have")
+
+    # «ближе к морю», «отель получше» — поднять вес критерия, без нового поиска
+    k = p.get("prefer")
+    if k in PREFER_LABEL:
+        setf("weights", state.weights, k, round(max(getattr(state.weights, k) + 0.25, 0.4), 2))
+        state.add_assumption("weights", f"в приоритете: {PREFER_LABEL[k]}", "вы так попросили")
+        _confirm(state, "no:weights")             # не перетирать вес правилом «недорого»
+    if p.get("near") in ("beach", "center"):
+        setf("weights", state, "near", p["near"])
+    # «ближе к морю» при готовом плане — значит ближе, чем текущий отель, среди подходящих по остальным условиям
+    cur = ((state.plan or {}).get("hotel") or {}).get("beach_m")
+    if p.get("near") == "beach" and cur:
+        from tools.scoring import hotel_filters      # здесь, чтобы не тянуть скоринг в импорт модуля
+        if any((h.get("beach_m") or cur) < cur and not hotel_filters(h, state)
+               for h in state.candidates.get("hotels", [])):
+            setf("must_have", state.constraints, "max_beach_m", cur - 1)
+        else:
+            p["near_unavailable"] = cur              # planner честно скажет, что ближе нет
     return changed
 
 

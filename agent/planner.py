@@ -8,14 +8,19 @@
 from __future__ import annotations
 
 import copy
+import re
+import logging
 import time
 import uuid
 from contextlib import contextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from agent import policy
-from agent.explain import _rub, explain_destination, explain_hotel, explain_transport, MEAL_NAME
+from agent.after_booking import build_reminders, request_early_checkin
+from agent.explain import (_rub, explain_destination, explain_hotel, explain_transport, MEAL_NAME,
+                           unsupported_numbers)
 from agent.llm import LLM
+from agent.memory import ProfileStore, apply_profile, forget_profile_field, profile_from_booking
 from agent.replan import invalidate, plan_diff
 from agent.schemas import AgentResponse, Card, QuickReply, TraceStep
 from agent.state import TripState, summarize
@@ -25,19 +30,53 @@ from tools.scoring import hotel_filters, score_destinations, score_hotels, score
 from tools.validator import validate_plan
 
 
+log = logging.getLogger(__name__)
+
+# Штраф комбинации за предупреждение стыковки (по умолчанию 0.03): выезд накануне — лишняя оплаченная ночь
+WARNING_PENALTY = {"leave_day_before": 0.12, "early_arrival": 0.03, "late_arrival": 0.03}
+
+# Первое сообщение без этих слов и без данных о поездке — офтоп
+TRAVEL_WORDS = (r"отдох|отпуск|поездк|путешеств|съезд|поехать|поеду|едем|лететь|полет|улет|тур\b|билет|отел|"
+                r"мор|пляж|гор[ыа]|выходн|куда|trip|travel|vacation|holiday|hotel|flight")
+
+# Что показывать в UI, пока шаг выполняется (стриминг по WebSocket)
+STEP_LABELS = {
+    "understand": "разбираю запрос…", "search_destinations": "подбираю направления…",
+    "search_transport": "ищу рейсы и поезда…", "search_hotels": "ищу отели…", "score": "сравниваю варианты…",
+    "assemble": "собираю поездку и проверяю бюджет…", "validate": "проверяю стыковки…",
+    "write": "формулирую ответ…", "checkout": "оформляю бронь…",
+}
+
+
 class Tracer:
-    def __init__(self) -> None:
+    """Шаги агента для панели «Как агент думает». on_event — колбэк для стриминга:
+    {"type": "step_start", ...} в начале шага и {"type": "trace", ...} по его завершении."""
+
+    def __init__(self, on_event=None) -> None:
         self.steps: list[TraceStep] = []
+        self.on_event = on_event
+
+    def _emit(self, event: dict) -> None:
+        if self.on_event:
+            try:
+                self.on_event(event)
+            except Exception as e:      # упавший слушатель не должен ронять агента
+                log.warning("trace listener failed: %s", e)
+
+    def _record(self, s: TraceStep) -> None:
+        self.steps.append(s)
+        self._emit({"type": "trace", **s.model_dump()})
 
     @contextmanager
     def step(self, name: str, detail: str = ""):
+        self._emit({"type": "step_start", "step": name, "label": STEP_LABELS.get(name, name + "…")})
         t0 = time.perf_counter()
         holder = {"detail": detail}
         yield holder
-        self.steps.append(TraceStep(step=name, detail=holder["detail"], ms=int((time.perf_counter() - t0) * 1000)))
+        self._record(TraceStep(step=name, detail=holder["detail"], ms=int((time.perf_counter() - t0) * 1000)))
 
     def add(self, name: str, detail: str) -> None:
-        self.steps.append(TraceStep(step=name, detail=detail))
+        self._record(TraceStep(step=name, detail=detail))
 
 
 def describe_request(s: TripState) -> str:
@@ -50,12 +89,13 @@ def describe_request(s: TripState) -> str:
     if rng:
         parts.append(f"{rng[0]:%d.%m}–{rng[1]:%d.%m}")
     t = s.travelers
-    who = f"{t.adults} взр."
-    if t.children_ages:
-        who += " + дети " + ", ".join(f"{a} лет" for a in t.children_ages)
-    if t.pets:
-        who += " + питомец"
-    parts.append(who)
+    if "travelers" in s.confirmed or t.children_ages or t.pets:   # не выдаём умолчание за понятое
+        who = "1 взрослый" if t.adults == 1 else f"{t.adults} взрослых"
+        if t.children_ages:
+            who += " + дети " + ", ".join(f"{a} лет" for a in t.children_ages)
+        if t.pets:
+            who += " + питомец"
+        parts.append(who)
     if s.budget.total_rub:
         parts.append(f"бюджет до {_rub(s.budget.total_rub)}")
     elif s.budget.level == "low":
@@ -64,9 +104,11 @@ def describe_request(s: TripState) -> str:
 
 
 class TravelAgent:
-    def __init__(self, llm: LLM | None = None, today: date | None = None) -> None:
+    def __init__(self, llm: LLM | None = None, today: date | None = None,
+                 memory: ProfileStore | None = None) -> None:
         self.llm = llm or LLM()
         self.today = today
+        self.memory = memory                  # None — без памяти между сессиями (тесты, evals)
         self.sessions: dict[str, TripState] = {}
 
     # ------------------------------------------------------------------ API
@@ -74,21 +116,36 @@ class TravelAgent:
         return self.sessions.get(session_id)
 
     def handle(self, session_id: str | None = None, message: str | None = None,
-               action: dict | None = None) -> AgentResponse:
+               action: dict | None = None, on_event=None, user_id: str | None = None) -> AgentResponse:
+        """on_event — необязательный колбэк для стриминга шагов (см. Tracer).
+        user_id — чей профиль подставить в новую сессию и обновить после брони."""
         sid = session_id or uuid.uuid4().hex[:12]
         state = self.sessions.setdefault(sid, TripState())
-        tr = Tracer()
-        old_plan = copy.deepcopy(state.plan)
+        tr = Tracer(on_event)
         today = self.today or date.today()
+        first_turn = state.stage == "new"
+        if user_id and first_turn and not state.user_id:
+            state.user_id = user_id
+            profile = self.memory.get(user_id) if self.memory else None
+            if profile:
+                apply_profile(state, profile, today)
+                tr.add("profile", "подставил профиль: " + ", ".join(
+                    a.value for a in state.assumptions if a.source == "profile"))
+        old_plan = copy.deepcopy(state.plan)
 
         patch: dict = {}
         if message:
             with tr.step("understand") as h:
-                rules = rule_patch(message, state)
+                rules = rule_patch(message, state, today)
                 llm_patch = self.llm.extract_patch(message, summarize(state), today.isoformat())
                 patch = merge_patches(rules, llm_patch)
-                h["detail"] = ("LLM + правила" if llm_patch else "правила (LLM выключена)") + \
-                    f": {', '.join(k for k in patch if k != 'intent') or 'без новых данных'}"
+                if llm_patch:
+                    source = "LLM + правила"
+                elif getattr(self.llm, "enabled", False):
+                    source = f"правила (LLM не ответила: {getattr(self.llm, 'last_error', None) or 'пустой ответ'})"
+                else:
+                    source = "правила (LLM выключена)"
+                h["detail"] = source + f": {', '.join(k for k in patch if k != 'intent') or 'без новых данных'}"
         extra_changed: set[str] = set()
         if action:
             patch, extra_changed = self._action_to_patch(action, state, patch)
@@ -96,6 +153,35 @@ class TravelAgent:
         intent = patch.get("intent", "plan")
         changed = apply_patch(state, patch) | extra_changed
         infer_hidden(state)
+
+        resp = self._route(sid, state, tr, intent, patch, changed, old_plan, today)
+        notes = self._notes(patch, state, resp.stage, message if first_turn else None)
+        if notes:
+            resp.message = " ".join(notes + [resp.message])
+        return resp
+
+    def _notes(self, patch: dict, state: TripState, stage: str, first_message: str | None) -> list[str]:
+        """Честно говорим, что из запроса не смогли учесть, вместо молчаливой подмены."""
+        be, notes = get_backend(), []
+        if first_message and not any(k != "intent" for k in patch) \
+                and not re.search(TRAVEL_WORDS, first_message.lower()):
+            notes.append("Я помогаю спланировать поездку: подберу направление, билеты, отель и трансфер. "
+                         "С этим вопросом не подскажу, а поездку давайте соберём.")
+        name = patch.get("destination_name")
+        if name and not be.find_destination_by_text(name):
+            notes.append(f"«{name}» нет среди направлений, с которыми я работаю, — подбираю по остальным условиям.")
+        raw = patch.get("unknown_origin")
+        if raw and not patch.get("origin_city"):
+            notes.append(f"Вылеты «из {raw}» пока не умею искать — "
+                         + ("выберите ближайший город из списка." if stage == "clarify"
+                            else f"считаю от города {state.origin_city}, поправьте, если нужно."))
+        if patch.get("near_unavailable"):
+            notes.append(f"Ближе {patch['near_unavailable']} м к морю отелей под ваши условия нет — "
+                         "поднял вес расположения среди тех, что есть.")
+        return notes
+
+    def _route(self, sid: str, state: TripState, tr: Tracer, intent: str, patch: dict,
+               changed: set[str], old_plan: dict | None, today: date) -> AgentResponse:
 
         if changed and state.stage == "booked":
             state.stage = "plan"        # изменение после покупки = пересборка с показом разницы
@@ -116,11 +202,28 @@ class TravelAgent:
             return self._checkout(sid, state, tr)
         if step == "booked":
             return self._booked(sid, state, tr)
+        if step == "early_checkin":
+            return self._early_checkin(sid, state, tr)
+        if step == "reminders":
+            return self._reminders(sid, state, tr)
         policy.apply_defaults(state, today)
         infer_hidden(state)
         if step == "inspire":
             return self._inspire(sid, state, tr)
         return self._plan(sid, state, tr, old_plan)
+
+    def _write(self, tr: Tracer, facts: dict) -> str | None:
+        """Текст от LLM — только если все числа в нём есть в фактах. Иначе None, и берётся шаблон."""
+        if not getattr(self.llm, "available", getattr(self.llm, "enabled", False)):
+            return None
+        with tr.step("write") as h:
+            text = self.llm.write(facts)
+            bad = unsupported_numbers(text, facts) if text else []
+            if bad:
+                h["detail"] = f"текст LLM отброшен — чисел {', '.join(bad)} нет в данных, взял шаблон"
+                return None
+            h["detail"] = "текст от LLM" if text else "LLM не ответила — шаблон"
+            return text
 
     # ----------------------------------------------------------- действия UI
     def _action_to_patch(self, action: dict, state: TripState, patch: dict) -> tuple[dict, set[str]]:
@@ -133,6 +236,14 @@ class TravelAgent:
                           kind, "outbound" if action.get("direction", "out") == "out" else "return")})
         elif kind == "checkout":
             p["intent"] = "checkout"
+        elif kind == "change_destination":          # «другие направления» — назад к подбору
+            state.selection.destination_id = None
+            if "destination_id" in state.selection.locked:
+                state.selection.locked.remove("destination_id")
+            changed.add("destination")
+            p["intent"] = "plan"
+        elif kind in ("request_early_checkin", "reminders"):
+            p["intent"] = "early_checkin" if kind == "request_early_checkin" else "reminders"
         elif kind == "set_weights":
             for k, v in action.get("weights", {}).items():
                 if hasattr(state.weights, k):
@@ -143,6 +254,7 @@ class TravelAgent:
             p.setdefault("intent", "change")
         elif kind == "remove_assumption":
             field = action["field"]
+            changed |= forget_profile_field(state, field) if field.startswith("profile_") else set()
             state.drop_assumption(field)
             state.confirmed.append(f"no:{field}")
             if field == "max_travel_hours":
@@ -173,9 +285,14 @@ class TravelAgent:
             return "inspire"
         field, pool = {"hotel": ("hotel_id", "hotels_top"), "outbound": ("outbound_id", "outbound_top"),
                        "return": ("return_id", "return_top")}[kind]
+        top = state.candidates.get(pool, [])
         if not sel_id and idx:
-            top = state.candidates.get(pool, [])
             sel_id = top[idx - 1]["id"] if 0 < idx <= len(top) else None
+        if not sel_id and patch.get("select_other") and top:
+            # «другой отель» — следующий по рейтингу после текущего, по кругу
+            ids = [x["id"] for x in top]
+            cur = getattr(state.selection, field)
+            sel_id = ids[(ids.index(cur) + 1) % len(ids)] if cur in ids else ids[0]
         if sel_id:
             setattr(state.selection, field, sel_id)
             if field not in state.selection.locked:
@@ -190,9 +307,10 @@ class TravelAgent:
         state.stage = "clarify"
         tr.add("clarify", f"не хватает: {', '.join(policy.missing_slots(state))}")
         understood = describe_request(state)
-        msg = self.llm.write({"stage": "clarify", "understood": understood,
+        msg = self._write(tr, {"stage": "clarify", "understood": understood,
                               "questions": [q.text for q in qs]}) or \
-            f"Понял: {understood}. Чтобы подобрать варианты, уточню: " + " ".join(q.text for q in qs)
+            (f"Понял: {understood}. " if understood else "") + \
+            "Чтобы подобрать варианты, уточню: " + " ".join(q.text for q in qs)
         return AgentResponse(session_id=sid, stage=state.stage, message=msg, questions=qs,
                              cards=[self._assumptions_card(state)], trace=tr.steps, state=state)
 
@@ -218,7 +336,7 @@ class TravelAgent:
         cards.append(self._assumptions_card(state))
         qr = [QuickReply(label=f"Выбрать: {d['name']}", action={"type": "select_destination", "id": d["id"]}) for d in top]
         best = top[0]
-        msg = self.llm.write({"stage": "inspire", "request": describe_request(state),
+        msg = self._write(tr, {"stage": "inspire", "request": describe_request(state),
                               "options": [{k: d[k] for k in ("name", "country", "air_temp", "water_temp", "flight_hours",
                                                              "est_total_rub", "reasons", "tradeoffs")} for d in top],
                               "assumptions": [a.value for a in state.assumptions]}) or (
@@ -255,15 +373,19 @@ class TravelAgent:
         if not hotels:
             reasons = {r for hh in state.candidates["hotels"] for r in hotel_filters(hh, state)}
             state.stage = "plan"
+            state.plan = None           # старый план под новые условия не подходит — оформлять нечего
             return AgentResponse(session_id=sid, stage=state.stage, trace=tr.steps, state=state,
                                  message="Не нашёл отелей, которые подходят под все условия ("
                                          + "; ".join(sorted(reasons)[:3]) + "). Могу ослабить одно из условий или предложить другое направление.",
-                                 quick_replies=[QuickReply(label="Другие направления", action={"type": "update", "patch": {"intent": "plan"}})])
+                                 quick_replies=[QuickReply(label="Другие направления", action={"type": "change_destination"})])
 
         # Стыковка закладывается в выбор: рейсы, прилетающие в день заезда, — в приоритете.
-        # Если все прилетают позже (дальний или ночной перелёт), сдвигаем заезд на день прилёта.
+        # Ночной приезд до ~05 утра — тоже «в день заезда»: номер держат (как в validate_plan).
+        # Если все прилетают позже (дальний перелёт), сдвигаем заезд на день прилёта.
         sel = state.selection
-        same_day = [o for o in outs if o["arrival"][:10] <= start.isoformat()]
+        state.drop_assumption("hotel_dates")
+        night_limit = f"{start + timedelta(days=1):%Y-%m-%d}T04:30"
+        same_day = [o for o in outs if o["arrival"] <= night_limit]
         if same_day:
             outs = same_day + [o for o in outs if o not in same_day]
         else:
@@ -277,8 +399,9 @@ class TravelAgent:
                 state.add_assumption("hotel_dates", f"заезд в отель {start:%d.%m}",
                                      "все рейсы прилетают на следующий день — не платим за пустую ночь")
                 tr.add("stitch", f"все рейсы прилетают {start:%d.%m} — заезд в отель сдвинут на день прилёта")
+        night_limit = f"{start + timedelta(days=1):%Y-%m-%d}T04:30"
         out_pool = [o for o in outs if o["id"] == sel.outbound_id] or \
-            ([o for o in outs if o["arrival"][:10] <= start.isoformat()] or outs)[:4]
+            ([o for o in outs if o["arrival"] <= night_limit] or outs)[:4]
         back_pool = [o for o in backs if o["id"] == sel.return_id] or backs[:4]
         hotel_locked = next((x for x in hotels if x["id"] == sel.hotel_id), None)
         if sel.hotel_id and not hotel_locked:
@@ -303,14 +426,31 @@ class TravelAgent:
                         total = o["price_rub"] + b["price_rub"] + hh["price_total_rub"] + tin["price_rub"] + tout["price_rub"]
                         score = 0.25 * o["score"] + 0.2 * b["score"] + 0.55 * hh["score"]
                         combos.append((score, total, o, b, hh, tin, tout))
-            fitting = [c for c in combos if not budget or c[1] <= budget]
+            # Стыковку проверяем на каждой комбинации тем же валидатором: длинный трансфер
+            # после позднего рейса может увести приезд на следующий день.
+            # Ошибки исключают комбинацию, предупреждения (ждать заселения, выезд накануне) — штрафуют.
+            stitched = []
+            for c in combos:
+                issues = validate_plan(
+                    {"check_in": start.isoformat(), "check_out": end.isoformat(), "outbound": c[2], "return": c[3],
+                     "hotel": c[4], "transfer_in": c[5], "transfer_out": c[6], "total_rub": c[1]},
+                    t.total, t.pets, None)
+                if not any(i["level"] == "error" for i in issues):
+                    penalty = sum(WARNING_PENALTY.get(i["code"], 0.03) for i in issues if i["level"] == "warning")
+                    stitched.append((c[0] - penalty, *c[1:]))
+            pool = stitched or combos
+            fitting = [c for c in pool if not budget or c[1] <= budget]
             if fitting:
                 best = max(fitting, key=lambda c: c[0])
-                h["detail"] = f"проверено {len(combos)} комбинаций, в бюджет укладываются {len(fitting)}"
+                h["detail"] = f"проверено {len(combos)} комбинаций, без ошибок стыковки {len(stitched)}, в бюджет укладываются {len(fitting)}"
             else:
-                best = min(combos, key=lambda c: c[1])
-                h["detail"] = f"проверено {len(combos)} комбинаций, в бюджет не влезает ни одна — беру самую дешёвую"
+                best = min(pool, key=lambda c: c[1])
+                h["detail"] = f"проверено {len(combos)} комбинаций, без ошибок стыковки {len(stitched)}, в бюджет не влезает ни одна — беру самую дешёвую"
             _, total, out, back, hotel, tin, tout = best
+            conflict = None
+            if not fitting and state.budget.level == "high":
+                conflict = (f"Люкс в бюджет {_rub(budget)} не помещается: даже самый доступный вариант стоит "
+                            f"{_rub(total)}. Показываю его; если бюджет можно поднять — соберу люкс.")
             sel.outbound_id, sel.return_id = out["id"], back["id"]
             sel.hotel_id, sel.transfer_in_id, sel.transfer_out_id = hotel["id"], tin["id"], tout["id"]
 
@@ -353,11 +493,12 @@ class TravelAgent:
 
         warn = next((i for i in plan["issues"] if i["level"] in ("error", "warning")), None)
         why = plan["hotel"]["explanation"]["why"]
-        msg = self.llm.write({"stage": "plan", "request": describe_request(state), "destination": dest["name"],
+        msg = self._write(tr, {"stage": "plan", "request": describe_request(state), "destination": dest["name"],
                               "dates": f"{start:%d.%m}–{end:%d.%m}", "outbound": {k: out[k] for k in ("carrier", "departure", "duration_h", "stops", "mode")},
                               "hotel": {"name": hotel["name"], "meals": MEAL_NAME[hotel["meals"]], "why": why[:2]},
-                              "total_rub": total, "main_issue": warn, "changes": diff,
+                              "total_rub": total, "main_issue": warn, "changes": diff, "budget_conflict": conflict,
                               "assumptions": [a.value for a in state.assumptions]}) or (
+            (conflict + " " if conflict else "") +
             ("Пересобрал план: " + "; ".join(f"{d['label'].lower()} {d['before']} → {d['after']}" for d in diff) + ". " if diff else "") +
             f"Поездка — {dest['name']}, {start:%d.%m}–{end:%d.%m}: "
             f"{'поезд' if out['mode'] == 'train' else 'рейс'} {out['carrier']} ({out['duration_h']} ч"
@@ -377,7 +518,7 @@ class TravelAgent:
         cart = {"items": [
             {"kind": "transport", "title": f"{plan['outbound']['from']} → {plan['outbound']['to']}", "id": plan["outbound"]["id"], "price_rub": plan["outbound"]["price_rub"]},
             {"kind": "transport", "title": f"{plan['return']['from']} → {plan['return']['to']}", "id": plan["return"]["id"], "price_rub": plan["return"]["price_rub"]},
-            {"kind": "hotel", "title": f"{plan['hotel']['name']}, {plan['nights']} ноч.", "id": plan["hotel"]["id"], "price_rub": plan["hotel"]["price_total_rub"]},
+            {"kind": "hotel", "title": f"{plan['hotel']['name']}, {plan['nights']} ноч." + (f", {plan['hotel']['rooms']} номера" if plan["hotel"].get("rooms") else ""), "id": plan["hotel"]["id"], "price_rub": plan["hotel"]["price_total_rub"]},
             {"kind": "transfer", "title": "Трансфер до отеля", "id": plan["transfer_in"]["id"], "price_rub": plan["transfer_in"]["price_rub"]},
             {"kind": "transfer", "title": "Трансфер обратно", "id": plan["transfer_out"]["id"], "price_rub": plan["transfer_out"]["price_rub"]},
         ], "total_rub": plan["total_rub"], "hotel_id": plan["hotel"]["id"]}
@@ -387,8 +528,11 @@ class TravelAgent:
             if prev:
                 order["previous_order_id"] = prev["order_id"]
                 order["price_difference_rub"] = cart["total_rub"] - prev["paid_rub"]
-            state.order = {**order, "cart": cart}
+            state.order = {**order, "cart": cart, "services": [], "reminders": build_reminders(plan)}
             h["detail"] = f"заказ {order['order_id']} (оплата имитирована)"
+        if self.memory and state.user_id:
+            self.memory.save(state.user_id, profile_from_booking(state, self.today or date.today()))
+            tr.add("profile", "запомнил предпочтения для следующих поездок")
         state.stage = "booked"
         diff_note = ""
         if state.order.get("previous_order_id"):
@@ -399,14 +543,45 @@ class TravelAgent:
             session_id=sid, stage=state.stage, trace=tr.steps, state=state,
             message=f"Готово! Поездка оформлена, номер брони {order['order_id']} (оплата имитирована).{diff_note} "
                     f"Могу запросить ранний заезд, поменять даты или напомнить о вылете.",
-            cards=[Card(type="order", data=state.order)],
-            quick_replies=[QuickReply(label="На 2 дня позже", text="а если на 2 дня позже?")])
+            cards=[Card(type="order", data=state.order)], quick_replies=self._booked_replies(state))
 
     def _booked(self, sid: str, state: TripState, tr: Tracer) -> AgentResponse:
         return AgentResponse(session_id=sid, stage=state.stage, trace=tr.steps, state=state,
                              message=f"Бронь {state.order['order_id']} оформлена. Скажите, что поменять: даты, отель, "
                                      f"бюджет, — я пересоберу план и покажу разницу в цене.",
-                             cards=[Card(type="order", data=state.order)])
+                             cards=[Card(type="order", data=state.order)], quick_replies=self._booked_replies(state))
+
+    def _early_checkin(self, sid: str, state: TripState, tr: Tracer) -> AgentResponse:
+        with tr.step("early_checkin") as h:
+            service = request_early_checkin(state.plan, get_backend())
+            h["detail"] = service["status_text"]
+        services = [s for s in state.order.get("services", []) if s["kind"] != "early_checkin"]
+        state.order = {**state.order, "services": services + [service]}
+        hotel = state.plan["hotel"]
+        msg = {"confirmed": f"Ранний заезд в «{hotel['name']}» подтверждён — можно заселяться сразу по приезде.",
+               "on_request": f"Запросил ранний заезд в «{hotel['name']}»: отель подтвердит в день заезда. "
+                             f"Если не получится — багаж можно оставить на ресепшен.",
+               "requested": f"Отправил отелю «{hotel['name']}» запрос на ранний заезд, ответ покажу в заказе.",
+               "declined": f"«{hotel['name']}» не делает ранний заезд (заселение с {hotel['check_in']}). "
+                           f"Багаж можно оставить на ресепшен или взять более поздний рейс."}[service["status"]]
+        return AgentResponse(session_id=sid, stage=state.stage, trace=tr.steps, state=state, message=msg,
+                             cards=[Card(type="order", data=state.order)], quick_replies=self._booked_replies(state))
+
+    def _reminders(self, sid: str, state: TripState, tr: Tracer) -> AgentResponse:
+        items = state.order.get("reminders") or build_reminders(state.plan)
+        tr.add("reminders", f"{len(items)} напоминаний")
+        lines = "; ".join(f"{datetime.fromisoformat(r['at']):%d.%m %H:%M} — {r['text'].lower()}" for r in items[:4])
+        return AgentResponse(session_id=sid, stage=state.stage, trace=tr.steps, state=state,
+                             message=f"Напомню: {lines}. Полный список — в карточке заказа.",
+                             cards=[Card(type="order", data=state.order)], quick_replies=self._booked_replies(state))
+
+    @staticmethod
+    def _booked_replies(state: TripState) -> list[QuickReply]:
+        qr = []
+        if not any(s["kind"] == "early_checkin" for s in state.order.get("services", [])):
+            qr.append(QuickReply(label="Запросить ранний заезд", action={"type": "request_early_checkin"}))
+        return qr + [QuickReply(label="Напоминания", text="напомни, что когда"),
+                     QuickReply(label="На 2 дня позже", text="а если на 2 дня позже?")]
 
     # ------------------------------------------------------------- утилиты
     @staticmethod

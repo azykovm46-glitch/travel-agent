@@ -19,14 +19,33 @@ def _norm_inverse(value: float, lo: float, hi: float) -> float:
     return max(0.0, min(1.0, (hi - value) / (hi - lo)))
 
 
+MAX_ROOMS = 3   # большую компанию селим в несколько номеров, но не больше трёх
+
+
+def rooms_needed(h: dict, guests: int) -> int:
+    return -(-guests // h["max_guests"])
+
+
+def with_rooms(h: dict, guests: int) -> dict:
+    """Если в один номер не помещаемся — берём несколько и умножаем цену."""
+    rooms = rooms_needed(h, guests)
+    if rooms == 1:
+        return h
+    return {**h, "rooms": rooms, "price_per_night_rub": h["price_per_night_rub"] * rooms,
+            "price_total_rub": h["price_total_rub"] * rooms}
+
+
 def hotel_filters(h: dict, state: TripState) -> list[str]:
     """Жёсткие причины отказа. Пустой список = отель проходит."""
     reasons = []
     t = state.travelers
-    if h["max_guests"] < t.total:
+    if rooms_needed(h, t.total) > MAX_ROOMS:
         reasons.append(f"номер до {h['max_guests']} гостей, а вас {t.total}")
     if t.pets and not h["pets_allowed"]:
         reasons.append("нельзя с животными")
+    limit = state.constraints.max_beach_m
+    if limit and h.get("beach_m") is not None and h["beach_m"] > limit:
+        reasons.append(f"до пляжа дальше {limit + 1} м")
     if "free_cancellation" in state.must_have and not h["free_cancellation"]:
         reasons.append("нет бесплатной отмены")
     if "all_inclusive" in state.must_have and h["meals"] != "AI":
@@ -38,12 +57,12 @@ def hotel_filters(h: dict, state: TripState) -> list[str]:
 
 def score_hotels(hotels: list[dict], state: TripState) -> list[dict]:
     w = state.weights.normalized()
-    ok = [h for h in hotels if not hotel_filters(h, state)]
+    ok = [with_rooms(h, state.travelers.total) for h in hotels if not hotel_filters(h, state)]
     if not ok:
         return []
     prices = [h["price_total_rub"] for h in ok]
     lo, hi = min(prices), max(prices)
-    sea = "sea" in state.trip_type
+    sea = state.location_by_beach()
     scored = []
     for h in ok:
         if sea and h.get("beach_m") is not None:
@@ -64,6 +83,8 @@ def score_hotels(hotels: list[dict], state: TripState) -> list[dict]:
         bonus = 0.0
         if state.travelers.has_kids and (h["family_rooms"] or h["kids_club"]):
             bonus += 0.05
+        if state.budget.level == "high":
+            bonus += 0.05 * (h["stars"] - 3)       # «люкс»: звёздность важнее цены
         score = sum(bd[k] * w[k] for k in bd) + bonus
         scored.append({**h, "score": round(score, 3), "breakdown": {k: round(v, 2) for k, v in bd.items()}})
     return sorted(scored, key=lambda x: x["score"], reverse=True)
@@ -113,7 +134,17 @@ def score_destinations(dests: list[dict], state: TripState) -> list[dict]:
                 reasons.append("подходит под тип отдыха")
         else:
             s += 0.15
-        if "sea" in state.trip_type:
+        if "ski" in state.trip_type:
+            if "ski" not in d["tags"]:
+                s -= 0.5                      # лыжи — жёсткое требование, пляж вместо гор не предлагаем
+                minus.append("нет горнолыжных трасс")
+            elif d.get("ski_season"):
+                s += 0.25
+                reasons.append(f"сезон катания, днём около {d['air_temp']}°C")
+            else:
+                s -= 0.3
+                minus.append("в эти даты не сезон для лыж")
+        elif "sea" in state.trip_type:
             water = d["water_temp"] or 0
             warm = max(0.0, min(1.0, (water - 18) / 8))
             s += 0.25 * warm

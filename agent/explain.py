@@ -5,6 +5,9 @@ LLM (если включена) лишь переписывает итогово
 """
 from __future__ import annotations
 
+import json
+import re
+
 from agent.state import TripState
 
 MEAL_NAME = {"RO": "без питания", "BB": "завтраки", "HB": "завтрак и ужин", "AI": "всё включено"}
@@ -14,9 +17,22 @@ def _rub(x: int) -> str:
     return f"{x:,} ₽".replace(",", " ")
 
 
+def _numbers(text: str) -> set[float]:
+    # «175 375 ₽» -> 175375: склеиваем разряды, разделённые пробелами
+    text = re.sub(r"(?<=\d)[\s  ](?=\d{3}(?!\d))", "", text)
+    return {float(n.replace(",", ".")) for n in re.findall(r"\d+(?:[.,]\d+)?", text)}
+
+
+def unsupported_numbers(text: str, facts: dict) -> list[str]:
+    """Числа из текста LLM, которых нет во входных фактах: цены, часы, даты, проценты.
+    Единицу пропускаем — «один из лучших» не факт."""
+    allowed = _numbers(json.dumps(facts, ensure_ascii=False, default=str))
+    return sorted(f"{n:g}" for n in _numbers(text) - allowed if n != 1)
+
+
 def explain_hotel(h: dict, state: TripState, all_hotels: list[dict]) -> dict:
     bd, w = h["breakdown"], state.weights.normalized()
-    sea = "sea" in state.trip_type and h.get("beach_m") is not None
+    sea = state.location_by_beach() and h.get("beach_m") is not None
     good = {
         "price": "один из самых выгодных среди подходящих",
         "location": f"{h['beach_m']} м до пляжа" if sea else f"{h['center_km']} км до центра",
@@ -40,6 +56,8 @@ def explain_hotel(h: dict, state: TripState, all_hotels: list[dict]) -> dict:
     if h["review_pros"]:
         why.append("гости хвалят: " + ", ".join(h["review_pros"]))
     tradeoffs = [bad[k] for k in ranked[::-1] if bd[k] <= 0.35 and w[k] >= 0.1][:2]
+    if h.get("rooms"):
+        tradeoffs.append(f"{h['rooms']} номера: в одном номере до {h['max_guests']} гостей")
     cheapest = min(x["price_total_rub"] for x in all_hotels)
     if h["price_total_rub"] > cheapest * 1.15:
         tradeoffs.append(f"на {_rub(h['price_total_rub'] - cheapest)} дороже самого дешёвого подходящего")

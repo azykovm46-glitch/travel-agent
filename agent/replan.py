@@ -64,6 +64,7 @@ def plan_diff(old: dict | None, new: dict | None) -> list[dict]:
             rows.append({"field": field, "label": label, "before": a, "after": b})
 
     dm = lambda s: f"{s[8:10]}.{s[5:7]}"   # noqa: E731  YYYY-MM-DD -> DD.MM
+    row("destination", "Направление", lambda p: p["destination"]["name"])
     row("dates", "Даты", lambda p: f"{dm(p['check_in'])}–{dm(p['check_out'])}")
     row("outbound", "Туда", lambda p: f"{p['outbound']['carrier']} {dm(p['outbound']['departure'])} {p['outbound']['departure'][11:16]}")
     row("return", "Обратно", lambda p: f"{p['return']['carrier']} {dm(p['return']['departure'])} {p['return']['departure'][11:16]}")
