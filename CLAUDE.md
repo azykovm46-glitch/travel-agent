@@ -26,12 +26,15 @@
 - `agent/understand.py` — разбор сообщения: `rule_patch` (regex) + LLM → `apply_patch` → `infer_hidden`
 - `agent/policy.py` — какие вопросы задать, следующий шаг, значения по умолчанию
 - `agent/replan.py` — что сбросить при изменении условий, дифф «было → стало»
-- `agent/explain.py` — почему / чем пожертвовали / риски
+- `agent/explain.py` — почему / чем пожертвовали / риски; `unsupported_numbers` — проверка текста LLM на выдуманные числа
+- `agent/after_booking.py` — напоминания и ранний заезд; `agent/memory.py` — профиль пользователя (SQLite) между сессиями
 - `agent/llm.py`, `agent/prompts.py` — OpenAI-совместимый клиент (OpenRouter и др.) и промпты
 - `agent/schemas.py` — формат ответа фронтенду (`AgentResponse`, карточки, кнопки, trace)
 - `tools/mock_backend.py` — моковые направления/рейсы/отели/трансферы (заменит роль B)
 - `tools/scoring.py` — фильтры и взвешенный скоринг; `tools/validator.py` — стыковки
 - `api/main.py` — FastAPI; `cli.py` — чат в терминале; `evals/run.py` — метрики
+- `scripts/check_llm.py` — проверка модели из .env; `scripts/make_api_examples.py` — `docs/api_examples.json` для фронта;
+  `scripts/demo.py` — 5 демо-сценариев через API (репетиция, резервное видео)
 
 ## Команды
 ```bash
@@ -39,14 +42,17 @@ pip install -r requirements.txt
 cp .env.example .env                       # вписать LLM_API_KEY и LLM_MODEL
 python cli.py --offline --trace            # чат без LLM, с шагами агента
 python cli.py --trace                      # чат с LLM
+python scripts/check_llm.py                # работает ли модель и в каком режиме (tools/json/text)
 python -m unittest discover -s tests -v    # тесты (или pytest -q)
 python evals/run.py --offline              # метрики на тестовых запросах
+python scripts/demo.py                     # 5 демо-сценариев; читать ответы глазами, а не только ✓
 uvicorn api.main:app --reload --port 8000  # API для фронтенда
 ```
 
 ## Правила работы
 - После любого изменения логики: `python -m unittest discover -s tests` и `python evals/run.py --offline`.
-  Метрики не должны ухудшаться (сейчас completion 1.0, stitch_err 0).
+  Метрики не должны ухудшаться (сейчас на 21 запросе: completion 1.0, stitch_err 0, correct 1.0).
+  Новый сложный запрос в evals — сразу с полем `expect`, иначе он проверяет только «дошёл до брони».
 - Новое поведение — сначала тест в `tests/test_agent.py`, потом код.
 - Контракты с командой — `docs/CONTRACTS.md`. Меняешь формат ответа или инструмента — обнови файл
   и напиши в чат команды.
