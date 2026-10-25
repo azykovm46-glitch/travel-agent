@@ -22,6 +22,7 @@
   dest_not                   — id направлений, которых не должно быть в тройке
   children                   — сколько детей должен понять агент
   origin, destination        — город вылета / id выбранного направления
+  destination_country        — страна выбранного направления (запрос назвал страну, а не город)
   check_in_mmdd              — дата заезда «MM-DD»
   month, adults, budget_level — что агент понял в итоговом состоянии
   first_message_contains     — подстрока в первом ответе агента
@@ -73,6 +74,10 @@ def check(expect: dict, first, final) -> list[tuple[str, str]]:
     if "destination" in expect and state.selection.destination_id != expect["destination"]:
         fails.append((kind(not be.get_destination(expect["destination"])),
                       f"направление {state.selection.destination_id} вместо {expect['destination']}"))
+    if "destination_country" in expect:          # «Египет» без города — подходит любой курорт страны
+        chosen = be.get_destination(state.selection.destination_id or "") or {}
+        if chosen.get("country") != expect["destination_country"]:
+            fails.append(("understand", f"направление {state.selection.destination_id} не в стране {expect['destination_country']}"))
     if "check_in_mmdd" in expect and plan.get("check_in", "")[5:] != expect["check_in_mmdd"]:
         fails.append(("understand", f"заезд {plan.get('check_in')} вместо …-{expect['check_in_mmdd']}"))
     for key, actual in (("month", state.dates.month or (state.dates.start and state.dates.start.month)),

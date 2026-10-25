@@ -4,7 +4,7 @@
 {"id": "budget-unknown-dest", "text": "не знаю куда, бюджет 60 тысяч, вдвоём, январь, из Казани", "expect": {"origin": "Казань"}}
 {"id": "pet", "text": "Сочи с собакой на неделю в ноябре, нас двое, из Москвы", "expect": {"destination": "sochi"}}
 {"id": "city-break", "text": "Стамбул на 4 ночи в марте, один, люблю поесть", "expect": {"destination": "istanbul"}}
-{"id": "all-inclusive", "text": "египет всё включено 10 ночей в феврале вдвоём с двумя детьми 4 и 9 лет", "expect": {"children": 2, "destination": "sharm"}}
+{"id": "all-inclusive", "text": "египет всё включено 10 ночей в феврале вдвоём с двумя детьми 4 и 9 лет", "expect": {"children": 2, "destination_country": "Египет"}}
 {"id": "no-transfers", "text": "Казань без пересадок на 3 дня в апреле из Екатеринбурга, втроём", "expect": {"origin": "Екатеринбург", "destination": "kazan"}}
 {"id": "typos", "text": "хачу на мори в дикабре с жиной недорага", "expect": {"month": 12, "adults": 2, "budget_level": "low", "top_dest_not": ["kaliningrad", "sochi"]}}
 {"id": "far", "text": "Пхукет на две недели в январе вдвоём из Новосибирска", "expect": {"origin": "Новосибирск", "destination": "phuket"}}
