@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+from unittest import mock
 from datetime import date, datetime
 from pathlib import Path
 
@@ -46,8 +47,8 @@ class AdapterContractTest(unittest.TestCase):
 
     def test_destinations_cover_all_his_cities_with_climate(self):
         his = set(rb.hb_flights.FLIGHT_HOURS_FROM_MOSCOW)
-        self.assertEqual({d["name"] for d in rb.DESTINATIONS}, his)
-        self.assertEqual(len(rb.DESTINATIONS), 25)
+        self.assertEqual({d["name"] for d in rb.active_destinations()}, his)   # только то, что есть у него
+        self.assertEqual(len(rb.active_destinations()), 25)
         for d in rb.DESTINATIONS:
             self.assertEqual(sorted(d["climate"]), list(range(1, 13)), d["name"])
         dests = rb.search_destinations("Москва", 11, ["sea"], None, None, 2, 7)
@@ -56,6 +57,25 @@ class AdapterContractTest(unittest.TestCase):
         self.assertEqual(sochi["flight_hours"], rb.hb_flights.FLIGHT_HOURS_FROM_MOSCOW["Сочи"])
         self.assertGreater(sochi["est_total_rub"], 0)
         self.assertIsNotNone(sochi["train_hours"])
+
+    def test_krasnaya_polyana_waits_for_his_data(self):
+        self.assertIsNone(rb.get_destination("krasnaya_polyana"))      # у него нет ни рейсов, ни отелей
+        self.assertIsNone(rb.find_destination_by_text("на розу хутор"))
+        kp = next(d for d in rb.DESTINATIONS if d["id"] == "krasnaya_polyana")
+        fake_hotel = rb._hotels()["Сочи"][0]
+        with mock.patch.dict(rb.hb_flights.FLIGHT_HOURS_FROM_MOSCOW, {"Красная Поляна": 2.0}), \
+                mock.patch.dict(rb.hb_models.UTC_OFFSET_HOURS, {"Красная Поляна": 3}), \
+                mock.patch.dict(rb._hotels(), {"Красная Поляна": [fake_hotel]}):
+            rb.active_destinations.cache_clear()
+            try:
+                self.assertEqual(rb.find_destination_by_text("на розу хутор")["id"], "krasnaya_polyana")
+                dests = {d["id"]: d for d in rb.search_destinations("Москва", 1, ["ski"], None, None, 2, 7)}
+                self.assertTrue(dests["krasnaya_polyana"]["ski_season"])
+                self.assertFalse(rb.search_destinations("Москва", 7, ["ski"], None, None, 2, 7)[-1]["ski_season"])
+                self.assertIn("ski", dests["krasnaya_polyana"]["tags"])
+            finally:
+                rb.active_destinations.cache_clear()
+        self.assertEqual(kp["ski_months"], [12, 1, 2, 3, 4])
 
     def test_eu_destinations_say_there_are_no_direct_flights(self):
         dests = {d["id"]: d for d in rb.search_destinations("Москва", 6, [], None, None, 2, 7)}

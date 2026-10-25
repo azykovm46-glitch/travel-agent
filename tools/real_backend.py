@@ -182,12 +182,29 @@ DESTINATIONS: list[dict] = [
     {"id": "venice", "name": "Венеция", "country": "Италия", "patterns": [r"\bвенеци"],
      "tags": ["city", "culture"], "visa": "шенгенская", "airport_km": 13, "center": (45.4408, 12.3155),
      "note": NO_DIRECT, "climate": _city([6, 9, 13, 17, 22, 26, 29, 28, 24, 18, 12, 7])},
+    # У него пока нет: сбор OSM по Сочи не доходит до гор. Включится сама, когда в его данных появятся
+    # рейсы (FLIGHT_HOURS_FROM_MOSCOW) и отели с destination «Красная Поляна» — см. active_destinations().
+    {"id": "krasnaya_polyana", "name": "Красная Поляна", "country": "Россия",
+     "patterns": [r"\bкрасн\w* полян", r"\bроз\w* хутор", r"\bгазпром\w* лаур", r"\bэсто-?садок"],
+     "tags": ["ski", "nature"], "visa": "не нужна", "airport_km": 50, "center": (43.6797, 40.2063),
+     "ski_months": [12, 1, 2, 3, 4],
+     "climate": _city([-3, -2, 2, 8, 13, 17, 20, 20, 15, 9, 3, -1])},
 ]
 # Страна без города — самое популярное направление в ней. Проверяется после городов.
 COUNTRY_PATTERNS = [(r"\bтурци", "antalya"), (r"\bегип", "hurghada"), (r"\bкита", "sanya"),
                     (r"\bгреци", "rhodes"), (r"\bиспани", "barcelona"), (r"\bитали", "rome")]
-_BY_ID = {d["id"]: d for d in DESTINATIONS}
-_BY_NAME = {d["name"]: d for d in DESTINATIONS}
+
+
+@lru_cache(maxsize=1)
+def active_destinations() -> list[dict]:
+    """Направления из справочника, по которым у него есть и рейсы, и отели. Остальные не показываем:
+    агент честно скажет, что данных нет, а не предложит место, куда нечего забронировать."""
+    return [d for d in DESTINATIONS
+            if d["name"] in hb_flights.FLIGHT_HOURS_FROM_MOSCOW and _hotels().get(d["name"])]
+
+
+def _dest(dest_id: str) -> dict | None:
+    return next((d for d in active_destinations() if d["id"] == dest_id), None)
 
 
 def _km(a: tuple[float, float], b: tuple[float, float]) -> float:
@@ -215,13 +232,13 @@ def _public(d: dict) -> dict:
 # Справочник
 # ---------------------------------------------------------------------------
 def get_destination(dest_id: str) -> dict | None:
-    d = _BY_ID.get(dest_id)
+    d = _dest(dest_id)
     return _public(d) if d else None
 
 
 def find_destination_by_text(text: str) -> dict | None:
     t = (text or "").lower().replace("ё", "е")
-    for d in DESTINATIONS:
+    for d in active_destinations():
         if any(re.search(p, t) for p in d["patterns"]):
             return _public(d)
     for pat, dest_id in COUNTRY_PATTERNS:
@@ -253,7 +270,7 @@ def search_destinations(origin: str, month: int, trip_type: list[str],
     try:
         day = _month_day(month)
         out = []
-        for d in DESTINATIONS:
+        for d in active_destinations():
             if d["name"] == origin:
                 continue
             air, water = d["climate"][month]
@@ -272,7 +289,7 @@ def search_destinations(origin: str, month: int, trip_type: list[str],
                                      / hb_trains.AVG_SPEED_KMH, 1) if train else None,
                 "est_total_rub": flight_rub * 2 + night * nights * max(1, (travelers + 1) // 2),
                 "est_night_rub": night,
-                "ski_season": False,
+                "ski_season": month in d.get("ski_months", []),
                 "travel_note": d.get("note"),
                 "data_source": DATA_SOURCE,
             })
@@ -282,7 +299,7 @@ def search_destinations(origin: str, month: int, trip_type: list[str],
 
 
 def get_weather(dest_id: str, month: int) -> dict:
-    d = _BY_ID.get(dest_id)
+    d = _dest(dest_id)
     if not d or month not in d["climate"]:
         return {}
     air, water = d["climate"][month]
@@ -315,7 +332,7 @@ def _transport(f, direction: str, dest_id: str, travelers: int, note: str | None
 
 def search_transport(origin: str, dest_id: str, day: date, travelers: int,
                      direction: str = "out") -> list[dict]:
-    d = _BY_ID.get(dest_id)
+    d = _dest(dest_id)
     if not d or origin not in SUPPORTED_ORIGINS or d["name"] == origin:
         return []
     # его генератор вызываем только для пары с Москвой: для других городов он падает или ошибается
@@ -353,7 +370,7 @@ def search_hotels(dest_id: str, check_in: date, check_out: date, adults: int,
                   children: int, pets: int) -> list[dict]:
     """Все отели направления. Вместимость и питомцев фильтрует наш скоринг (с несколькими
     номерами), а «дети не допускаются» — только здесь, как в его hard_filter_hotel."""
-    d = _BY_ID.get(dest_id)
+    d = _dest(dest_id)
     nights = (check_out - check_in).days
     if not d or nights <= 0:
         return []
@@ -370,7 +387,7 @@ def search_transfers(dest_id: str, from_point: str, to_point: str, when: str,
     """from_point / to_point: airport | station | hotel:<id>.
     Аэропорт — его формула; обратно — отдельные варианты с маршрутом «отель → аэропорт».
     Вокзал — у него нет: считаем по расстоянию от вокзала до отеля (~20 км/ч по городу)."""
-    d = _BY_ID.get(dest_id)
+    d = _dest(dest_id)
     hotel_id = next((p.split(":", 1)[1] for p in (from_point, to_point) if p.startswith("hotel:")), None)
     h = _hotel(hotel_id) if hotel_id else None
     if not d or not h:
