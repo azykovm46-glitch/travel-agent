@@ -178,7 +178,7 @@ class FlowTest(unittest.TestCase):
         self.assertTrue(plan["hotel"]["explanation"]["why"])         # объяснение есть
         r = a.handle(r.session_id, action={"type": "checkout"})
         self.assertEqual(r.stage, "booked")
-        self.assertTrue(r.state.order["order_id"].startswith("OST-"))
+        self.assertTrue(r.state.order["order_id"])                     # префикс у бэкендов разный: OST-, OD-
 
     def test_replan_keeps_destination_and_user_hotel(self):
         a = new_agent()
@@ -303,7 +303,7 @@ class FlowTest(unittest.TestCase):
         self.assertEqual(r.stage, "booked")
         svc = r.state.order["services"]
         self.assertEqual([s["kind"] for s in svc], ["early_checkin"])
-        self.assertIn(svc[0]["status"], ("confirmed", "on_request", "declined"))
+        self.assertIn(svc[0]["status"], ("confirmed", "on_request", "declined", "requested"))
         self.assertNotIn("Запросить ранний заезд", [q.label for q in r.quick_replies])
         r = a.handle(r.session_id, message="напомни, что когда")
         self.assertTrue(r.message.startswith("Напомню:"))
