@@ -73,6 +73,17 @@ class UnderstandTest(unittest.TestCase):
         self.assertEqual(merged["pets"], 1)
         self.assertEqual(merged["adults"], 2)                           # непустые значения LLM доходят
 
+    def test_llm_default_single_adult_does_not_hide_assumption(self):
+        # реальный ответ модели на демо-запрос: adults 1, хотя взрослых не называли
+        llm = {"intent": "plan", "origin_city": "Москва", "month": 11, "adults": 1, "children_ages": [5]}
+        s = TripState()
+        apply_patch(s, merge_patches(rule_patch(DEMO, s), llm))
+        infer_hidden(s)
+        self.assertEqual(s.travelers.adults, 2)
+        self.assertTrue(any(a.field == "adults" for a in s.assumptions))
+        solo = merge_patches(rule_patch("одна с ребёнком 5 лет", TripState()), llm)
+        self.assertEqual(solo["adults"], 1)                              # сказано явно — верим
+
     def test_llm_other_intent_does_not_drop_travel_request(self):
         rules = rule_patch("в горы на лыжах из Москвы в декабре", TripState())
         self.assertEqual(merge_patches(rules, {"intent": "other"})["intent"], "plan")
@@ -536,6 +547,7 @@ class FakeClient:
 def llm_with(client) -> LLM:
     llm = LLM()
     llm.enabled, llm.model, llm._client = True, "fake", client
+    llm.fallback_model = llm.reasoning_effort = ""     # не зависеть от .env разработчика
     return llm
 
 

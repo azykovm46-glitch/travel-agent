@@ -227,6 +227,8 @@ def merge_patches(rules: dict, llm: dict | None) -> dict:
             continue
         if (v is False or v == 0) and rules.get(k):
             continue
+        if k == "adults" and v == 1 and "adults" not in rules:
+            continue      # модель ставит 1 «по умолчанию» — пусть сработает видимое допущение infer_hidden
         if k in UNION_KEYS and rules.get(k):
             v = sorted(set(rules[k]) | set(v))
         merged[k] = v
