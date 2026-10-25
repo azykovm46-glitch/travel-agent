@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import functools
 import os
 import sys
 import unittest
@@ -25,12 +26,26 @@ from agent.llm import LLM, clean_patch  # noqa: E402
 from agent.memory import ProfileStore, SessionStore  # noqa: E402
 from agent.state import TripState  # noqa: E402
 from agent.understand import apply_patch, infer_hidden, merge_patches, rule_patch  # noqa: E402
-from tools import mock_backend  # noqa: E402
+from tools import get_backend, mock_backend  # noqa: E402
 from unittest import mock  # noqa: E402
 from tools.validator import validate_plan  # noqa: E402
 
 TODAY = date(2026, 10, 25)
 DEMO = "хочу к тёплому морю в ноябре, недорого, с ребёнком 5 лет, без долгих перелётов, из Москвы"
+
+
+def on_mock(test):
+    """Тесту нужны города мок-бэкенда (Владивосток, горнолыжные курорты) — гоняем его на моке при любом
+    TOOLS_BACKEND. Остальные тесты проверяют логику агента и должны проходить на любом бэкенде."""
+    @functools.wraps(test)
+    def wrapper(*args, **kwargs):
+        with mock.patch.dict(os.environ, {"TOOLS_BACKEND": "tools.mock_backend"}):
+            get_backend.cache_clear()
+            try:
+                return test(*args, **kwargs)
+            finally:
+                get_backend.cache_clear()
+    return wrapper
 
 
 def new_agent() -> TravelAgent:
@@ -218,6 +233,7 @@ class FlowTest(unittest.TestCase):
         replan = next(s.detail for s in r.trace if s.step == "replan")
         self.assertIn("переищу: ничего", replan)                      # только переранжирование
 
+    @on_mock
     def test_ski_does_not_offer_beach(self):
         a = new_agent()
         r = a.handle(message="в горы на лыжах в феврале вдвоём из Москвы")
@@ -254,6 +270,7 @@ class FlowTest(unittest.TestCase):
         r = a.handle(message="из Тмутаракани в Сочи в ноябре вдвоём")
         self.assertIn("Тмутаракан", r.message)
 
+    @on_mock
     def test_regional_origin_known(self):
         a = new_agent()
         r = a.handle(message="из Владивостока в Анталью в ноябре вдвоём")
@@ -331,6 +348,7 @@ class FlowTest(unittest.TestCase):
         r = a.handle(r.session_id, action={"type": "change_destination"})
         self.assertEqual(r.stage, "inspire")
 
+    @on_mock
     def test_night_arrival_keeps_check_in_day(self):
         a = new_agent()
         r = a.handle(message="из Владивостока в Шарм с 29 декабря по 4 января вдвоём")
@@ -345,6 +363,7 @@ class FlowTest(unittest.TestCase):
         r = a.handle(r.session_id, message="не знаю")                  # второй ход — без нотаций
         self.assertNotIn("Я помогаю", r.message)
 
+    @on_mock
     def test_ski_in_season_needs_no_questions(self):
         a = new_agent()
         r = a.handle(message="с 28 декабря по 3 января в горы на лыжах, нас трое, из Екатеринбурга, бюджет 200к")
@@ -354,6 +373,7 @@ class FlowTest(unittest.TestCase):
         self.assertTrue(top["ski_season"])
         self.assertNotIn("сезон", r.message.split(".")[0])            # без лишних оговорок
 
+    @on_mock
     def test_ski_out_of_season_is_honest_and_offers_nearest(self):
         a = new_agent()
         r = a.handle(message="хочу покататься на лыжах в июле из Москвы вдвоем")
@@ -366,6 +386,7 @@ class FlowTest(unittest.TestCase):
         self.assertTrue(r.cards[0].data["ski_season"])
         self.assertNotIn("не сезон", r.message)
 
+    @on_mock
     def test_no_ski_resorts_in_catalog_is_said_honestly(self):
         no_ski = [d for d in mock_backend.DESTINATIONS if "ski" not in d["tags"]]
         with mock.patch.object(mock_backend, "DESTINATIONS", no_ski):
