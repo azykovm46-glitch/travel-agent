@@ -72,13 +72,35 @@ class AdapterContractTest(unittest.TestCase):
         self.assertIsNone(rb.find_destination_by_text("примерно в ноябре"))   # «рим» внутри слова
         self.assertIsNone(rb.find_destination_by_text("на марс"))
 
-    def test_only_moscow_departures_and_never_raises(self):
-        self.assertEqual(rb.normalize_origin("москвы"), "Москва")
-        self.assertIsNone(rb.normalize_origin("екатеринбурга"))       # его генератор падает на KeyError
-        self.assertEqual(rb.search_transport("Екатеринбург", "sochi", DAY, 2, "out"), [])
+    def test_major_russian_origins_and_never_raises(self):
+        for text, city in (("москвы", "Москва"), ("питера", "Санкт-Петербург"), ("казани", "Казань"),
+                           ("екатеринбурга", "Екатеринбург"), ("новосибирска", "Новосибирск"),
+                           ("нижнего новгорода", "Нижний Новгород")):
+            self.assertEqual(rb.normalize_origin(text), city)
+        self.assertIsNone(rb.normalize_origin("владивостока"))         # данных нет — агент скажет честно
+        self.assertEqual(rb.search_transport("Владивосток", "sochi", DAY, 2, "out"), [])
         self.assertEqual(rb.search_transport("Москва", "атлантида", DAY, 2, "out"), [])
+        self.assertEqual(rb.search_transport("Санкт-Петербург", "spb", DAY, 2, "out"), [])
         self.assertEqual(rb.search_hotels("sochi", DAY, DAY, 2, 0, 0), [])
         self.assertEqual(rb.search_transfers("sochi", "airport", "hotel:нет-такого", "", 2, 0), [])
+
+    def test_regional_flight_is_moscow_schedule_plus_offset_in_local_time(self):
+        msk = rb.search_transport("Москва", "antalya", DAY, 1, "out")
+        nsk = rb.search_transport("Новосибирск", "antalya", DAY, 1, "out")
+        self.assertEqual(len(nsk), len([o for o in msk if o["mode"] == "plane"]))
+        for m, n in zip(msk, nsk):
+            self.assertEqual(n["from"], "Новосибирск")
+            self.assertEqual(n["departure"], m["departure"])             # то же расписание, местное время
+            self.assertAlmostEqual(n["duration_h"], m["duration_h"] + 3.0, delta=0.06)
+            self.assertEqual((n["departure_utc_offset"], n["arrival_utc_offset"]), (7, 3))
+            wall = (datetime.fromisoformat(n["arrival"]) - datetime.fromisoformat(n["departure"])).total_seconds() / 3600
+            self.assertAlmostEqual(wall + 4, n["duration_h"], delta=0.06)   # в Анталье на 4 часа раньше
+            self.assertGreater(n["price_rub"], m["price_rub"])
+            self.assertNotEqual(n["id"], m["id"])
+        back = rb.search_transport("Екатеринбург", "antalya", date(2026, 11, 21), 1, "back")
+        self.assertTrue(back)
+        self.assertEqual((back[0]["to"], back[0]["arrival_utc_offset"]), ("Екатеринбург", 5))
+        self.assertFalse([o for o in rb.search_transport("Казань", "sochi", DAY, 1, "out") if o["mode"] == "train"])
 
 
 @unittest.skipIf(rb is None, SKIP)
@@ -182,11 +204,18 @@ class AgentOnRealBackendTest(unittest.TestCase):
         self.assertTrue(any(i["code"] == "route_note" for i in r.state.plan["issues"]))
         self.assertIn("прямых рейсов из россии сейчас нет", r.message.lower())
 
-    def test_unsupported_origin_is_honest_and_offers_moscow(self):
-        r = self.agent().handle(message="из Екатеринбурга в Сочи в ноябре вдвоём")
-        self.assertIn("Екатеринбург", r.message)
+    def test_unsupported_origin_is_honest_and_offers_supported(self):
+        r = self.agent().handle(message="из Владивостока в Сочи в ноябре вдвоём")
+        self.assertIn("Владивосток", r.message)
         self.assertEqual(r.stage, "clarify")
-        self.assertEqual([o.label for o in r.questions[0].options], ["Москва"])
+        self.assertEqual([o.label for o in r.questions[0].options],
+                         ["Москва", "Санкт-Петербург", "Казань", "Екатеринбург"])
+
+    def test_regional_origin_plan(self):
+        r = self.agent().handle(message="из Екатеринбурга в Сочи в ноябре вдвоём")
+        self.assertEqual(r.stage, "plan")
+        self.assertEqual(r.state.plan["outbound"]["from"], "Екатеринбург")
+        self.assertFalse([i for i in r.state.plan["issues"] if i["level"] == "error"])
 
     def test_unknown_early_checkin_is_not_a_refusal(self):
         a = self.agent()

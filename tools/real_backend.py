@@ -19,8 +19,10 @@
   для поездов — от вокзала по реальным координатам отеля.
 
 Рейсы у него генерируются только от Москвы: для других городов вылета генератор падает
-(нет пояса) или подставляет время полёта из Москвы. Поэтому вылет — только из Москвы,
-остальные города normalize_origin не узнаёт, и агент честно говорит об этом.
+(нет пояса) или подставляет время полёта из Москвы. Поэтому его генератор зовём только для пары
+с Москвой, а вылет из Петербурга, Казани, Екатеринбурга, Новосибирска и Нижнего считаем от
+московского рейса с поправкой ко времени (как в моке) и поясом города. Остальные города
+normalize_origin не узнаёт, и агент честно говорит об этом.
 """
 from __future__ import annotations
 
@@ -34,7 +36,7 @@ from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
 
-from tools.mock_backend import ORIGIN_ALIASES
+from tools.mock_backend import ORIGIN_ALIASES, ORIGIN_OFFSET
 
 BACKEND_DIR = Path(os.getenv("HACKATHON_BACKEND_DIR") or Path(__file__).resolve().parents[2] / "hackathon-backend")
 _SRC = BACKEND_DIR / "src"
@@ -64,7 +66,13 @@ hb = _load_backend()
 hb_flights, hb_trains, hb_models = (sys.modules[m] for m in ("flights", "trains", "models"))
 
 DATA_SOURCE = "hackathon-backend: отели из OSM, цены и рейсы синтетические"
-SUPPORTED_ORIGINS = ["Москва"]                 # см. docstring: рейсы у него только от Москвы
+# Города вылета: пояс UTC. Его генератор знает только Москву — для остальных рейс считаем от московского
+# (время в пути + ORIGIN_OFFSET мока, прилёт — в поясе города). Кроме Москвы, поездов нет.
+ORIGIN_UTC = {"Москва": 3, "Санкт-Петербург": 3, "Казань": 3, "Екатеринбург": 5, "Новосибирск": 7,
+              "Нижний Новгород": 3}
+ORIGIN_SLUG = {"Москва": "mow", "Санкт-Петербург": "led", "Казань": "kzn", "Екатеринбург": "svx",
+               "Новосибирск": "ovb", "Нижний Новгород": "goj"}
+SUPPORTED_ORIGINS = list(ORIGIN_UTC)
 MEALS = {"none": "RO", "breakfast": "BB", "all_inclusive": "AI"}
 NO_DIRECT = "прямых рейсов из России сейчас нет — рейсы в демо синтетические, реальной доступности не означают"
 
@@ -249,10 +257,11 @@ def search_destinations(origin: str, month: int, trip_type: list[str],
             if d["name"] == origin:
                 continue
             air, water = d["climate"][month]
-            hours = hb_flights.FLIGHT_HOURS_FROM_MOSCOW[d["name"]]
+            hours = round(hb_flights.FLIGHT_HOURS_FROM_MOSCOW[d["name"]] + ORIGIN_OFFSET.get(origin, 0.0), 1)
             prices = [h.price_per_night for h in _hotels().get(d["name"], [])]
             night = int(statistics.median(prices)) if prices else 0
-            fares = [f.price for f in hb_flights.generate_flights("Москва", d["name"], day)]
+            fares = [o["price_rub"] for o in search_transport(origin if origin in SUPPORTED_ORIGINS else "Москва",
+                                                              d["id"], day, 1) if o["mode"] == "plane"]
             flight_rub = (min(fares) if fares else 0) * travelers
             train = "station" in d and origin == "Москва"
             out.append({
@@ -281,31 +290,43 @@ def get_weather(dest_id: str, month: int) -> dict:
             "data_source": "справочник адаптера (климатическая норма, приблизительно)"}
 
 
-def _transport(f, direction: str, dest_id: str, travelers: int, note: str | None) -> dict:
-    offsets = hb_models.UTC_OFFSET_HOURS
+def _transport(f, direction: str, dest_id: str, travelers: int, note: str | None, origin: str = "Москва") -> dict:
+    """Его рейс (всегда Москва ↔ направление) в наш формат. Для другого города вылета берём московское
+    расписание и добавляем ORIGIN_OFFSET мока ко времени в пути, а прилёт считаем в поясе этого города."""
+    utc = {**hb_models.UTC_OFFSET_HOURS, **ORIGIN_UTC}
+    base = f.duration_hours
+    hours = base + ORIGIN_OFFSET[origin]
+    src, dst = (origin, f.destination) if direction == "out" else (f.origin, origin)
+    arrives = f.departs + timedelta(hours=hours + utc[dst] - utc[src])
+    tag = "" if origin == "Москва" else f"{ORIGIN_SLUG[origin]}-"
     return {
         # его id вида FL-1114-1 повторяются на разных маршрутах — делаем уникальным
-        "id": f"rb-{direction}-{dest_id}-{f.id}", "mode": "plane" if f.mode == "flight" else "train",
-        "carrier": f.id, "from": f.origin, "to": f.destination,
-        "departure": f.departs.isoformat(timespec="minutes"), "arrival": f.arrives.isoformat(timespec="minutes"),
-        "departure_utc_offset": offsets[f.origin], "arrival_utc_offset": offsets[f.destination],
-        "duration_h": round(f.duration_hours, 1), "stops": f.stops,
+        "id": f"rb-{direction}-{dest_id}-{tag}{f.id}", "mode": "plane" if f.mode == "flight" else "train",
+        "carrier": f.id, "from": src, "to": dst,
+        "departure": f.departs.isoformat(timespec="minutes"), "arrival": arrives.isoformat(timespec="minutes"),
+        "departure_utc_offset": utc[src], "arrival_utc_offset": utc[dst],
+        "duration_h": round(hours, 1), "stops": f.stops,
         "baggage": f.baggage_kg > 0 or f.mode == "train", "baggage_kg": f.baggage_kg,
-        "price_rub": f.price * travelers, "note": note, "synthetic": f.synthetic, "data_source": DATA_SOURCE,
+        "price_rub": int(round(f.price * hours / base, -2)) * travelers,     # дольше лететь — дороже, как в моке
+        "note": note, "synthetic": f.synthetic,
+        "data_source": DATA_SOURCE + ("" if origin == "Москва" else "; рейс рассчитан от московского с поправкой"),
     }
 
 
 def search_transport(origin: str, dest_id: str, day: date, travelers: int,
                      direction: str = "out") -> list[dict]:
     d = _BY_ID.get(dest_id)
-    if not d or origin not in SUPPORTED_ORIGINS:
+    if not d or origin not in SUPPORTED_ORIGINS or d["name"] == origin:
         return []
-    src, dst = (origin, d["name"]) if direction == "out" else (d["name"], origin)
+    # его генератор вызываем только для пары с Москвой: для других городов он падает или ошибается
+    src, dst = ("Москва", d["name"]) if direction == "out" else (d["name"], "Москва")
     try:
-        found = hb_flights.generate_flights(src, dst, day) + hb_trains.generate_trains(src, dst, day)
+        found = hb_flights.generate_flights(src, dst, day)
+        if origin == "Москва":
+            found += hb_trains.generate_trains(src, dst, day)     # поезда у него только от Москвы
     except Exception:
         return []
-    return [_transport(f, direction, dest_id, travelers, d.get("note")) for f in found]
+    return [_transport(f, direction, dest_id, travelers, d.get("note"), origin) for f in found]
 
 
 def _hotel_dict(h, d: dict, nights: int) -> dict:
