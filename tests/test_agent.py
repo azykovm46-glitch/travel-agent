@@ -24,7 +24,9 @@ from agent.explain import unsupported_numbers  # noqa: E402
 from agent.llm import LLM, clean_patch  # noqa: E402
 from agent.memory import ProfileStore, SessionStore  # noqa: E402
 from agent.state import TripState  # noqa: E402
-from agent.understand import apply_patch, infer_hidden, rule_patch  # noqa: E402
+from agent.understand import apply_patch, infer_hidden, merge_patches, rule_patch  # noqa: E402
+from tools import mock_backend  # noqa: E402
+from unittest import mock  # noqa: E402
 from tools.validator import validate_plan  # noqa: E402
 
 TODAY = date(2026, 10, 25)
@@ -49,6 +51,32 @@ class UnderstandTest(unittest.TestCase):
         infer_hidden(s)
         self.assertEqual(s.travelers.adults, 2)                       # скрытое: двое взрослых
         self.assertTrue(any(a.field == "kids" for a in s.assumptions))  # допущение видно
+
+    def test_group_size_in_words(self):
+        self.assertEqual(rule_patch("нас трое, из Москвы", TripState())["adults"], 3)
+        self.assertEqual(rule_patch("нас четверо", TripState())["adults"], 4)
+        self.assertEqual(rule_patch("едем нас 5 человек", TripState())["adults"], 5)
+
+    def test_sparse_llm_patch_keeps_rule_fields(self):
+        q = "с 28 декабря по 3 января в горы на лыжах, нас трое, из Екатеринбурга, бюджет 200к"
+        rules = rule_patch(q, TripState(), TODAY)
+        # так ответила реальная модель: почти пусто, и порядок типов другой
+        merged = merge_patches(rules, {"intent": "plan", "trip_type": ["ski"]})
+        for k in ("origin_city", "start", "end", "month", "budget_total_rub", "adults", "destination_hint"):
+            self.assertEqual(merged[k], rules[k], k)
+        self.assertEqual(sorted(merged["trip_type"]), ["nature", "ski"])   # списки объединяем, а не затираем
+
+    def test_llm_false_or_zero_does_not_erase_rules(self):
+        merged = merge_patches({"intent": "plan", "direct_only": True, "pets": 1},
+                               {"intent": "plan", "direct_only": False, "pets": 0, "adults": 2})
+        self.assertTrue(merged["direct_only"])
+        self.assertEqual(merged["pets"], 1)
+        self.assertEqual(merged["adults"], 2)                           # непустые значения LLM доходят
+
+    def test_llm_other_intent_does_not_drop_travel_request(self):
+        rules = rule_patch("в горы на лыжах из Москвы в декабре", TripState())
+        self.assertEqual(merge_patches(rules, {"intent": "other"})["intent"], "plan")
+        self.assertEqual(merge_patches({"intent": "plan"}, {"intent": "other"})["intent"], "other")
 
     def test_shift_is_not_nights(self):
         p = rule_patch("а если на 2 дня позже?", TripState())
@@ -306,6 +334,34 @@ class FlowTest(unittest.TestCase):
         r = a.handle(r.session_id, message="не знаю")                  # второй ход — без нотаций
         self.assertNotIn("Я помогаю", r.message)
 
+    def test_ski_in_season_needs_no_questions(self):
+        a = new_agent()
+        r = a.handle(message="с 28 декабря по 3 января в горы на лыжах, нас трое, из Екатеринбурга, бюджет 200к")
+        self.assertEqual(r.stage, "inspire")
+        top = r.cards[0].data
+        self.assertIn("ski", top["tags"])
+        self.assertTrue(top["ski_season"])
+        self.assertNotIn("сезон", r.message.split(".")[0])            # без лишних оговорок
+
+    def test_ski_out_of_season_is_honest_and_offers_nearest(self):
+        a = new_agent()
+        r = a.handle(message="хочу покататься на лыжах в июле из Москвы вдвоем")
+        self.assertIn("в июле", r.message)
+        self.assertIn("не сезон", r.message)
+        self.assertIn("с ноября", r.message)                           # Шерегеш открывается раньше всех
+        move = [q for q in r.quick_replies if q.action.get("patch", {}).get("month") == 11]
+        self.assertTrue(move)
+        r = a.handle(r.session_id, action=move[0].action)
+        self.assertTrue(r.cards[0].data["ski_season"])
+        self.assertNotIn("не сезон", r.message)
+
+    def test_no_ski_resorts_in_catalog_is_said_honestly(self):
+        no_ski = [d for d in mock_backend.DESTINATIONS if "ski" not in d["tags"]]
+        with mock.patch.object(mock_backend, "DESTINATIONS", no_ski):
+            r = new_agent().handle(message="на лыжах в январе из Москвы вдвоем")
+        self.assertIn("горнолыжных курортов", r.message.lower())
+        self.assertIn("nature", r.cards[0].data["tags"])               # ближайшее по духу — горы и природа
+
     def test_luxury_with_tiny_budget_is_called_out(self):
         a = new_agent()
         r = a.handle(message="люкс за 30 тысяч в Дубай вдвоём из Москвы в декабре")
@@ -400,6 +456,25 @@ class LLMPathTest(unittest.TestCase):
         self.assertIn("LLM", r.trace[0].detail)
 
 
+class OffTopicLLM(FakeLLM):
+    """Модель, которая распознаёт офтоп: на вопрос не о поездке — intent other."""
+
+    def extract_patch(self, message, state_summary, today):
+        return {"intent": "other"} if "марс" in message else super().extract_patch(message, state_summary, today)
+
+
+class OffTopicTest(unittest.TestCase):
+    def test_offtopic_mid_conversation_returns_to_trip(self):
+        a = TravelAgent(llm=OffTopicLLM(), today=TODAY)
+        r = a.handle(message="Сочи в ноябре вдвоём из Москвы")
+        plan = r.state.plan
+        r = a.handle(r.session_id, message="а какая погода на марсе?")
+        self.assertIn("С этим вопросом не подскажу", r.message)
+        self.assertIn("поездк", r.message)
+        self.assertEqual(r.state.plan["total_rub"], plan["total_rub"])  # план не тронут
+        self.assertFalse(r.diff)
+
+
 class LyingLLM(FakeLLM):
     """Пишет текст с ценой, которой нет в фактах."""
 
@@ -487,6 +562,17 @@ class LLMClientTest(unittest.TestCase):
         self.assertIsNone(llm.extract_patch("y", "{}", "2026-10-25"))
         self.assertEqual(client.calls, ["tools"])                       # следующие вызовы не пошли в сеть
         self.assertIn("пауза", llm.last_error)
+
+    def test_reasoning_effort_is_sent_only_when_set(self):
+        seen = []
+        client = FakeClient(tools='{"intent": "plan"}', text="Готово.")
+        orig = client.create
+        client.chat.completions.create = lambda **kw: seen.append(kw.get("extra_body")) or orig(**kw)
+        llm = llm_with(client)
+        llm.extract_patch("x", "{}", "2026-10-25")
+        llm.reasoning_effort = "none"                                   # Polza/OpenRouter: без рассуждений быстрее
+        self.assertEqual(llm.write({"stage": "plan"}), "Готово.")
+        self.assertEqual(seen, [None, {"reasoning": {"effort": "none"}}])
 
     def test_garbage_from_model_is_dropped(self):
         raw = {"intent": "plan", "month": "13", "adults": "2", "start": "завтра", "children_ages": [5, "x", 40],

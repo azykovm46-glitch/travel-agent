@@ -24,6 +24,7 @@ _NUM = r"(\d+|один|одна|два|две|три|четыре|пять|ше�
 KIDS_COUNT = {"двое": 2, "двоих": 2, "двумя": 2, "двух": 2, "трое": 3, "троих": 3, "тремя": 3,
               "трех": 3, "четверо": 4, "четырьмя": 4}
 _KIDS_NUM = r"(\d+|" + "|".join(KIDS_COUNT) + r")"
+GROUP_COUNT = {"двое": 2, "трое": 3, "четверо": 4, "пятеро": 5, "шестеро": 6}
 MONTH_STEMS = {"январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5, "июн": 6, "июл": 7,
                "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12}
 _MONTH_GEN = r"(январ|феврал|март|апрел|ма(?=[яй])|июн|июл|август|сентябр|октябр|ноябр|декабр)\w*"
@@ -147,6 +148,11 @@ def rule_patch(message: str, state: TripState, today: date | None = None) -> dic
     elif re.search(r"с реб|с сын|с доч|ребенк", t):
         p["children_ages"] = ages[:1] or [7]
     if re.search(r"с собак|с пс[оа]|с кот|с кошк|с питомц|собака", t): p["pets"] = 1
+    # «нас трое», «нас 5 человек» — всего, вместе с детьми
+    m = re.search(r"\bнас\s+(\d{1,2}|" + "|".join(GROUP_COUNT) + r")\b", t)
+    if m and "adults" not in p:
+        n = int(m.group(1)) if m.group(1).isdigit() else GROUP_COUNT[m.group(1)]
+        p["adults"] = max(1, n - len(p.get("children_ages", [])))
 
     # --- бюджет -----------------------------------------------------------
     m = re.search(r"(\d[\d\s]*[\d])\s*(тыс|т\.р|k\b|к\b)|(\d+)\s*(тыс|к\b)", t)
@@ -206,13 +212,27 @@ def rule_patch(message: str, state: TripState, today: date | None = None) -> dic
     return p
 
 
+# Списки, которые LLM дополняет, а не заменяет: модель часто возвращает только часть типов
+UNION_KEYS = ("trip_type", "must_have_add")
+
+
 def merge_patches(rules: dict, llm: dict | None) -> dict:
+    """LLM перекрывает правила, но пустым, False или 0 найденное правилами не затирает:
+    модель часто молча пропускает поля или ставит «по умолчанию»."""
     if not llm:
         return rules
     merged = {**rules}
     for k, v in llm.items():
-        if v not in (None, "", [], {}):
-            merged[k] = v
+        if v is None or v == "" or v == [] or v == {}:
+            continue
+        if (v is False or v == 0) and rules.get(k):
+            continue
+        if k in UNION_KEYS and rules.get(k):
+            v = sorted(set(rules[k]) | set(v))
+        merged[k] = v
+    # «other» от модели не должен выбросить запрос, в котором правила нашли данные о поездке
+    if llm.get("intent") == "other" and any(k not in ("intent", "typo_fixes") for k in rules):
+        merged["intent"] = rules.get("intent", "plan")
     return merged
 
 

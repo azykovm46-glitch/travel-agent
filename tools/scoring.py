@@ -138,6 +138,8 @@ def score_destinations(dests: list[dict], state: TripState) -> list[dict]:
             if "ski" not in d["tags"]:
                 s -= 0.5                      # лыжи — жёсткое требование, пляж вместо гор не предлагаем
                 minus.append("нет горнолыжных трасс")
+                if "nature" in d["tags"]:
+                    s += 0.15                 # если трасс нет нигде — ближе всего горы и природа
             elif d.get("ski_season"):
                 s += 0.25
                 reasons.append(f"сезон катания, днём около {d['air_temp']}°C")

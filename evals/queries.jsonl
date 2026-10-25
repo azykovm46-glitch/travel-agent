@@ -20,3 +20,5 @@
 {"id": "unknown-origin", "text": "из Тмутаракани в Сочи в ноябре вдвоём", "expect": {"first_message_contains": "Тмутаракан", "destination": "sochi"}}
 {"id": "luxury-cheap", "text": "люкс за 30 тысяч в Дубай вдвоём из Москвы в декабре", "expect": {"first_message_contains": "Люкс", "destination": "dubai"}}
 {"id": "english-family", "text": "Antalya for 7 nights in December with a 5 year old kid from Kazan", "expect": {"destination": "antalya", "origin": "Казань", "children": 1, "month": 12}}
+{"id": "ski-offseason", "text": "хочу покататься на лыжах в июле из Москвы вдвоем", "expect": {"first_message_contains": "не сезон", "dest_not": ["phuket", "sharm", "dubai"]}}
+{"id": "ski-group", "text": "с 28 декабря по 3 января в горы на лыжах, нас трое, из Екатеринбурга, бюджет 200к", "expect": {"origin": "Екатеринбург", "adults": 3, "top_dest_in": ["krasnaya_polyana", "sheregesh", "dombai"], "check_in_mmdd": "12-28"}}

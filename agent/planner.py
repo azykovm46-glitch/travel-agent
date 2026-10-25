@@ -169,6 +169,10 @@ class TravelAgent:
                 and not re.search(TRAVEL_WORDS, first_message.lower()):
             notes.append("Я помогаю спланировать поездку: подберу направление, билеты, отель и трансфер. "
                          "С этим вопросом не подскажу, а поездку давайте соберём.")
+        elif patch.get("intent") == "other":           # офтоп посреди разговора распознаёт только LLM
+            notes.append("С этим вопросом не подскажу — вернёмся к вашей поездке."
+                         if state.plan or state.candidates else
+                         "С этим вопросом не подскажу, а поездку давайте соберём.")
         name = patch.get("destination_name")
         if name and not be.find_destination_by_text(name):
             notes.append(f"«{name}» нет среди направлений, с которыми я работаю, — подбираю по остальным условиям.")
@@ -337,16 +341,48 @@ class TravelAgent:
             cards.append(Card(type="destination", data={**d, "rank": i, "explanation": explain_destination(d)}))
         cards.append(self._assumptions_card(state))
         qr = [QuickReply(label=f"Выбрать: {d['name']}", action={"type": "select_destination", "id": d["id"]}) for d in top]
+        ski_note, ski_month = self._ski_season_note(state, ranked, start, end, tr)
+        if ski_month:
+            qr.insert(0, QuickReply(label=f"Перенести на {policy.MONTH_NOM[ski_month - 1]}",
+                                    action={"type": "update", "patch": {"month": ski_month}}))
         best = top[0]
-        msg = self._write(tr, {"stage": "inspire", "request": describe_request(state),
+        msg = self._write(tr, {"stage": "inspire", "request": describe_request(state), "shown_note": ski_note,
                               "options": [{k: d[k] for k in ("name", "country", "air_temp", "water_temp", "flight_hours",
                                                              "est_total_rub", "reasons", "tradeoffs")} for d in top],
                               "assumptions": [a.value for a in state.assumptions]}) or (
             f"Под запрос ({describe_request(state)}) подходят: {', '.join(d['name'] for d in top)}. "
             f"Лучше всего — {best['name']}: {', '.join(best['reasons'][:2]) or 'хороший баланс цены и дороги'}, "
             f"ориентировочно {_rub(best['est_total_rub'])} на всех. Выберите направление — соберу поездку целиком.")
+        if ski_note:                                  # не доверяем LLM пересказ: оговорка видна всегда
+            msg = f"{ski_note} {msg}"
         return AgentResponse(session_id=sid, stage=state.stage, message=msg, cards=cards,
                              quick_replies=qr, trace=tr.steps, state=state)
+
+    def _ski_season_note(self, state: TripState, ranked: list[dict], start: date, end: date,
+                         tr: Tracer) -> tuple[str | None, int | None]:
+        """Лыжи без трасс или не в сезон — честно сказать и предложить ближайший месяц катания."""
+        if "ski" not in state.trip_type or any(d.get("ski_season") for d in ranked):
+            return None, None
+        if not any("ski" in d["tags"] for d in ranked):
+            note = ("Горнолыжных курортов среди направлений, с которыми я работаю, нет — "
+                    + ("показываю ближайшее по духу: горы и природу." if any("nature" in d["tags"] for d in ranked)
+                       else "показываю лучшее по остальным условиям."))
+            tr.add("ski_season", "в каталоге нет горнолыжных направлений")
+            return note, None
+        be = get_backend()
+        for shift in range(1, 12):
+            month = (start.month + shift - 1) % 12 + 1
+            open_ = [d["name"] for d in be.search_destinations(
+                origin=state.origin_city, month=month, trip_type=state.trip_type,
+                max_travel_hours=state.constraints.max_travel_hours, budget_per_night=None,
+                travelers=state.travelers.total, nights=(end - start).days) if d.get("ski_season")]
+            if open_:
+                tr.add("ski_season", f"в {policy.MONTH_IN[start.month - 1]} не сезон; ближайший — "
+                                     f"{policy.MONTH_NOM[month - 1]}: {', '.join(open_)}")
+                return (f"Кататься в {policy.MONTH_IN[start.month - 1]} не получится: на курортах, с которыми "
+                        f"я работаю, не сезон. Ближайший сезон — с {policy.MONTH_GEN[month - 1]} "
+                        f"({', '.join(open_)}). Пока показываю горы без лыж — или перенесём поездку?"), month
+        return None, None
 
     def _plan(self, sid: str, state: TripState, tr: Tracer, old_plan: dict | None) -> AgentResponse:
         be = get_backend()
