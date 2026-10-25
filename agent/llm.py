@@ -129,6 +129,11 @@ class LLM:
             try:
                 return self.client.chat.completions.create(model=model, **kwargs)
             except Exception as e:     # сеть, лимиты, неверная модель — пробуем запасную
+                # запасная не умеет режим, а основная просто перегружена: режим не понижаем, ждём основную
+                if last_err is not None and getattr(e, "status_code", None) in UNSUPPORTED \
+                        and getattr(last_err, "status_code", None) not in UNSUPPORTED:
+                    log.warning("LLM %s не умеет этот режим: %s", model, e)
+                    break
                 last_err = e
                 log.warning("LLM %s failed: %s", model, e)
         raise last_err

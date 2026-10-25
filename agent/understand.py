@@ -229,6 +229,9 @@ def merge_patches(rules: dict, llm: dict | None) -> dict:
             continue
         if k == "adults" and v == 1 and "adults" not in rules:
             continue      # модель ставит 1 «по умолчанию» — пусть сработает видимое допущение infer_hidden
+        if k == "origin_city" and not get_backend().normalize_origin(v):
+            merged.setdefault("unknown_origin", v)       # город, откуда не умеем искать, — скажем честно
+            continue
         if k in UNION_KEYS and rules.get(k):
             v = sorted(set(rules[k]) | set(v))
         merged[k] = v

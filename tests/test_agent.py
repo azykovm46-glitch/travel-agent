@@ -486,6 +486,39 @@ class OffTopicTest(unittest.TestCase):
         self.assertFalse(r.diff)
 
 
+class ScriptedLLM(FakeLLM):
+    """Разбор задаём в тесте; пишет коротко и без чисел — как модель, которая опускает оговорки."""
+
+    def __init__(self, patch):
+        self.patch = patch
+
+    def extract_patch(self, message, state_summary, today):
+        return dict(self.patch)
+
+    def write(self, facts):
+        return "Готово, смотрите план."
+
+
+class LLMHonestyTest(unittest.TestCase):
+    def test_llm_cannot_invent_origin_city(self):
+        llm = ScriptedLLM({"intent": "plan", "origin_city": "Тмутаракань", "destination_name": "Сочи",
+                           "month": 11, "adults": 2})
+        r = TravelAgent(llm=llm, today=TODAY).handle(message="из Тмутаракани в Сочи в ноябре вдвоём")
+        self.assertIn("Тмутаракан", r.message)                         # честно сказали
+        self.assertNotEqual(r.state.origin_city, "Тмутаракань")         # и не считаем от выдуманного города
+
+    def test_luxury_conflict_survives_llm_text(self):
+        llm = ScriptedLLM({"intent": "plan", "origin_city": "Москва", "destination_name": "Дубай", "month": 12,
+                           "adults": 2, "budget_total_rub": 30000, "budget_level": "high"})
+        r = TravelAgent(llm=llm, today=TODAY).handle(message="люкс за 30 тысяч в Дубай вдвоём из Москвы в декабре")
+        self.assertTrue(r.message.startswith("Люкс в бюджет"))
+        self.assertIn("Готово", r.message)
+
+    def test_day_of_date_in_words_is_not_invented(self):
+        self.assertEqual(unsupported_numbers("с 14 по 21 ноября", {"dates": "14.11–21.11"}), [])
+        self.assertEqual(unsupported_numbers("с 14 по 22 ноября", {"dates": "14.11–21.11"}), ["22"])
+
+
 class LyingLLM(FakeLLM):
     """Пишет текст с ценой, которой нет в фактах."""
 
@@ -585,6 +618,25 @@ class LLMClientTest(unittest.TestCase):
         llm.reasoning_effort = "none"                                   # Polza/OpenRouter: без рассуждений быстрее
         self.assertEqual(llm.write({"stage": "plan"}), "Готово.")
         self.assertEqual(seen, [None, {"reasoning": {"effort": "none"}}])
+
+    def test_fallback_without_tools_does_not_downgrade_primary_mode(self):
+        client = FakeClient(tools='{"intent": "plan"}')
+        orig = client.create
+
+        def create(**kw):                     # основная перегружена, запасная не умеет tools
+            if kw["model"] == "main" and not client.calls:
+                client.calls.append("429")
+                raise ApiError(429)
+            if kw["model"] == "backup" and "tools" in kw:
+                raise ApiError(400)
+            return orig(**kw)
+
+        client.chat.completions.create = create
+        llm = llm_with(client)
+        llm.model, llm.fallback_model = "main", "backup"
+        self.assertIsNone(llm.extract_patch("x", "{}", "2026-10-25"))
+        self.assertEqual(llm.mode, "tools")                             # режим основной модели не испорчен
+        self.assertIn("429", llm.last_error)
 
     def test_garbage_from_model_is_dropped(self):
         raw = {"intent": "plan", "month": "13", "adults": "2", "start": "завтра", "children_ages": [5, "x", 40],

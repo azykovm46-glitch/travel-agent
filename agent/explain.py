@@ -26,7 +26,9 @@ def _numbers(text: str) -> set[float]:
 def unsupported_numbers(text: str, facts: dict) -> list[str]:
     """Числа из текста LLM, которых нет во входных фактах: цены, часы, даты, проценты.
     Единицу пропускаем — «один из лучших» не факт."""
-    allowed = _numbers(json.dumps(facts, ensure_ascii=False, default=str))
+    raw = json.dumps(facts, ensure_ascii=False, default=str)
+    # части дат и времени тоже факты: «14.11–21.11» разрешает «с 14 по 21 ноября»
+    allowed = _numbers(raw) | {float(n) for n in re.findall(r"\d+", raw)}
     return sorted(f"{n:g}" for n in _numbers(text) - allowed if n != 1)
 
 

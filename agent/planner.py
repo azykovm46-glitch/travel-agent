@@ -534,15 +534,16 @@ class TravelAgent:
         msg = self._write(tr, {"stage": "plan", "request": describe_request(state), "destination": dest["name"],
                               "dates": f"{start:%d.%m}–{end:%d.%m}", "outbound": {k: out[k] for k in ("carrier", "departure", "duration_h", "stops", "mode")},
                               "hotel": {"name": hotel["name"], "meals": MEAL_NAME[hotel["meals"]], "why": why[:2]},
-                              "total_rub": total, "main_issue": warn, "changes": diff, "budget_conflict": conflict,
+                              "total_rub": total, "main_issue": warn, "changes": diff, "shown_note": conflict,
                               "assumptions": [a.value for a in state.assumptions]}) or (
-            (conflict + " " if conflict else "") +
             ("Пересобрал план: " + "; ".join(f"{d['label'].lower()} {d['before']} → {d['after']}" for d in diff) + ". " if diff else "") +
             f"Поездка — {dest['name']}, {start:%d.%m}–{end:%d.%m}: "
             f"{'поезд' if out['mode'] == 'train' else 'рейс'} {out['carrier']} ({out['duration_h']} ч"
             f"{', без пересадок' if not out['stops'] else ', с пересадкой'}), отель «{hotel['name']}» — "
             f"{', '.join(why[:2]) or 'лучший по вашим критериям'}. Итого {_rub(total)}."
             + (f" Внимание: {warn['message']}" + (f" — предлагаю {warn['fix']}." if warn.get('fix') else ".") if warn else ""))
+        if conflict:                                  # как и с лыжами: оговорка не зависит от LLM
+            msg = f"{conflict} {msg}"
         return AgentResponse(session_id=sid, stage=state.stage, message=msg, cards=cards, quick_replies=qr,
                              diff=diff, trace=tr.steps, state=state)
 
