@@ -10,7 +10,10 @@
   first_rec_s  — время до первой рекомендации (карточки направления или плана)
   stitch_err   — число ошибок стыковок (level=error) в итоговых планах
   explained    — доля планов с непустым «почему»
-  correct      — доля сценариев с полем expect, где агент понял запрос правильно
+  correct      — доля сценариев с полем expect, где все ожидания сбылись (= understood и in_data)
+  understood   — доля, где агент понял запрос: не сбылось только то, чего нет в данных бэкенда,
+                 и агент честно сказал об этом в первом ответе («нет данных», «не умею искать»…)
+  in_data      — доля, где всё нужное нашлось в данных бэкенда
   llm_understand / llm_write — доля ходов, где разбор / текст реально дала LLM (без --offline;
                  при сбоях API агент молча уходит на правила, и метрики становятся офлайновыми)
 
@@ -37,32 +40,48 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 
-def check(expect: dict, first, final) -> list[str]:
-    """Возвращает список несбывшихся ожиданий."""
+# Фразы, которыми агент честно говорит, что нужного нет в данных бэкенда
+MISSING_MARKERS = ("нет данных", "не умею искать", "горнолыжных курортов")
+
+
+def check(expect: dict, first, final) -> list[tuple[str, str]]:
+    """Несбывшиеся ожидания: (вид, текст). Вид «data» — агент понял верно, но нужного места или города
+    нет в данных бэкенда, и он честно сказал об этом в первом ответе. Иначе «understand» — не понял."""
+    from tools import get_backend
+    be = get_backend()
+    honest = any(m in first.message.lower() for m in MISSING_MARKERS)
+
+    def kind(missing: bool) -> str:
+        return "data" if missing and honest else "understand"
+
     fails = []
     dests = [c.data["id"] for c in first.cards if c.type == "destination"]
     state, plan = final.state, final.state.plan or {}
     if "top_dest_in" in expect and (not dests or dests[0] not in expect["top_dest_in"]):
-        fails.append(f"первое направление {dests[:1]} не из {expect['top_dest_in']}")
+        fails.append((kind(not any(be.get_destination(d) for d in expect["top_dest_in"])),
+                      f"первое направление {dests[:1]} не из {expect['top_dest_in']}"))
     if "top_dest_not" in expect and dests and dests[0] in expect["top_dest_not"]:
-        fails.append(f"первое направление {dests[0]}")
+        fails.append(("understand", f"первое направление {dests[0]}"))
     for d in expect.get("dest_not", []):
         if d in dests:
-            fails.append(f"в тройке есть {d}")
+            fails.append(("understand", f"в тройке есть {d}"))
     if "children" in expect and len(state.travelers.children_ages) != expect["children"]:
-        fails.append(f"детей {len(state.travelers.children_ages)} вместо {expect['children']}")
+        fails.append(("understand", f"детей {len(state.travelers.children_ages)} вместо {expect['children']}"))
     if "origin" in expect and state.origin_city != expect["origin"]:
-        fails.append(f"вылет {state.origin_city} вместо {expect['origin']}")
+        fails.append((kind(not be.normalize_origin(expect["origin"].lower())),
+                      f"вылет {state.origin_city} вместо {expect['origin']}"))
     if "destination" in expect and state.selection.destination_id != expect["destination"]:
-        fails.append(f"направление {state.selection.destination_id} вместо {expect['destination']}")
+        fails.append((kind(not be.get_destination(expect["destination"])),
+                      f"направление {state.selection.destination_id} вместо {expect['destination']}"))
     if "check_in_mmdd" in expect and plan.get("check_in", "")[5:] != expect["check_in_mmdd"]:
-        fails.append(f"заезд {plan.get('check_in')} вместо …-{expect['check_in_mmdd']}")
+        fails.append(("understand", f"заезд {plan.get('check_in')} вместо …-{expect['check_in_mmdd']}"))
     for key, actual in (("month", state.dates.month or (state.dates.start and state.dates.start.month)),
                         ("adults", state.travelers.adults), ("budget_level", state.budget.level)):
         if key in expect and actual != expect[key]:
-            fails.append(f"{key} {actual!r} вместо {expect[key]!r}")
+            fails.append(("understand", f"{key} {actual!r} вместо {expect[key]!r}"))
     if "first_message_contains" in expect and expect["first_message_contains"] not in first.message:
-        fails.append(f"в первом ответе нет «{expect['first_message_contains']}»")
+        # ожидаемой фразы нет, но агент сказал, что нужного нет в данных («не сезон» без курортов вообще)
+        fails.append((kind(True), f"в первом ответе нет «{expect['first_message_contains']}»"))
     return fails
 
 
@@ -129,6 +148,11 @@ def run(offline: bool) -> dict:
         "stitch_err": sum(r["stitch_errors"] for r in rows),
         "explained": round(sum(r["explained"] for r in planned) / max(1, len(planned)), 2),
         "correct": round(sum(not r["expect_fails"] for r in checked) / len(checked), 2) if checked else None,
+        # correct = understood и in_data одновременно
+        "understood": round(sum(all(k != "understand" for k, _ in r["expect_fails"]) for r in checked)
+                            / len(checked), 2) if checked else None,
+        "in_data": round(sum(all(k != "data" for k, _ in r["expect_fails"]) for r in checked)
+                         / len(checked), 2) if checked else None,
     }
     for step in ("understand", "write"):
         used, total = (sum(r["llm_turns"][step][i] for r in rows) for i in (0, 1))
@@ -143,5 +167,5 @@ if __name__ == "__main__":
     for r in res["rows"]:
         print(f"{'✓' if r['booked'] else '✗'} {r['id']:<22} ходов {r['turns']}  вопросов {r['questions']}  "
               f"первая рек. {r['first_rec_s']}с  ошибок стыковки {r['stitch_errors']}" + (f"  ОШИБКА {r['error']}" if r["error"] else "")
-              + (f"\n    ✗ не понял: {'; '.join(r['expect_fails'])}" if r["expect_fails"] else ""))
+              + "".join(f"\n    ✗ {'нет в данных' if k == 'data' else 'не понял'}: {t}" for k, t in r["expect_fails"] or []))
     print("\nИТОГО:", json.dumps(res["summary"], ensure_ascii=False))
