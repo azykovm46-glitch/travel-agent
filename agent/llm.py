@@ -99,6 +99,8 @@ class LLM:
         self.model = os.getenv("LLM_MODEL", "")
         self.fallback_model = os.getenv("LLM_FALLBACK_MODEL", "")
         self.timeout = float(os.getenv("LLM_TIMEOUT", "25"))
+        # none | low | high — для «думающих» моделей; пусто — не отправляем, решает провайдер
+        self.reasoning_effort = os.getenv("LLM_REASONING_EFFORT", "")
         self.enabled = bool(self.api_key and self.model) and os.getenv("AGENT_OFFLINE") != "1"
         self.mode = os.getenv("LLM_EXTRACT_MODE", "tools")   # с какого режима начинать
         if self.mode not in MODES:
@@ -120,6 +122,9 @@ class LLM:
 
     def _chat(self, **kwargs):
         last_err = None
+        if self.reasoning_effort:
+            # не reasoning_effort: Polza его молча игнорирует, а рассуждения съедают max_tokens ответа
+            kwargs["extra_body"] = {"reasoning": {"effort": self.reasoning_effort}}
         for model in [m for m in (self.model, self.fallback_model) if m]:
             try:
                 return self.client.chat.completions.create(model=model, **kwargs)
