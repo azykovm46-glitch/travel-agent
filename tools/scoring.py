@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from agent.places import region_of
 from agent.state import TripState
 
 MEAL_RANK = {"RO": 0.0, "BB": 0.5, "HB": 0.75, "AI": 1.0}
@@ -160,6 +161,13 @@ def score_destinations(dests: list[dict], state: TripState) -> list[dict]:
                 minus.append(f"вода прохладная, около {water}°C")
         else:
             s += 0.25 * max(0.0, min(1.0, (d["air_temp"] - 5) / 20))
+        like = state.like_place                  # просили место, которого нет в каталоге: сначала страна, потом регион
+        if like and d["country"] == like["country"]:
+            s += 0.5                             # та же страна важнее совпадения по типу отдыха и региону
+            reasons.append(f"тоже {like['country']}")
+        elif like and region_of(d["country"]) and region_of(d["country"]) == region_of(like["country"]):
+            s += 0.15
+            reasons.append(f"тот же регион — {region_of(like['country'])}")
         if d.get("travel_note"):
             minus.append(d["travel_note"])       # «прямых рейсов из России нет» и т.п. — из бэкенда как есть
         hours = d["flight_hours"]

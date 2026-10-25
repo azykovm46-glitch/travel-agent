@@ -26,6 +26,7 @@ from agent.llm import LLM, clean_patch  # noqa: E402
 from agent.memory import ProfileStore, SessionStore  # noqa: E402
 from agent.state import TripState  # noqa: E402
 from agent.understand import apply_patch, infer_hidden, merge_patches, rule_patch  # noqa: E402
+from agent.places import lookup_place, region_of  # noqa: E402
 from tools import get_backend, mock_backend  # noqa: E402
 from unittest import mock  # noqa: E402
 from tools.validator import validate_plan  # noqa: E402
@@ -103,6 +104,14 @@ class UnderstandTest(unittest.TestCase):
         rules = rule_patch("в горы на лыжах из Москвы в декабре", TripState())
         self.assertEqual(merge_patches(rules, {"intent": "other"})["intent"], "plan")
         self.assertEqual(merge_patches({"intent": "plan"}, {"intent": "other"})["intent"], "other")
+
+    def test_known_places_outside_catalog(self):
+        self.assertEqual(lookup_place("хочу на пхукет")["country"], "Таиланд")
+        self.assertEqual(lookup_place("стамбул в ноябре")["name"], "Стамбул")
+        self.assertIn("ski", lookup_place("шерегеш")["tags"])
+        self.assertIsNone(lookup_place("атлантида"))
+        self.assertEqual(region_of("Китай"), region_of("Таиланд"))
+        self.assertNotEqual(region_of("ОАЭ"), region_of("Таиланд"))
 
     def test_shift_is_not_nights(self):
         p = rule_patch("а если на 2 дня позже?", TripState())

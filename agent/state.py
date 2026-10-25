@@ -96,6 +96,7 @@ class TripState(BaseModel):
     must_have: list[str] = Field(default_factory=list)   # breakfast, free_cancellation, family_room, pets_allowed, all_inclusive
     weights: Weights = Field(default_factory=Weights)
     near: Literal["beach", "center"] | None = None       # от чего считать «расположение» отеля
+    like_place: dict[str, Any] | None = None     # место, которого нет в каталоге (agent/places.py): ищем похожее
     assumptions: list[Assumption] = Field(default_factory=list)
     selection: Selection = Field(default_factory=Selection)
 

@@ -226,6 +226,29 @@ class AgentOnRealBackendTest(unittest.TestCase):
         self.assertNotIn("не делает ранний заезд", r.message)        # «не знаем» ≠ «нет»
         self.assertIn("запрос", r.message)
 
+    def top(self, r):
+        return [c.data for c in r.cards if c.type == "destination"]
+
+    def test_missing_city_same_country_first(self):
+        r = self.agent().handle(message="Стамбул в ноябре вдвоём из Москвы")
+        self.assertIn("По направлению «Стамбул» у меня нет данных", r.message)
+        self.assertEqual(self.top(r)[0]["country"], "Турция")         # Анталья, Аланья или Бодрум
+
+    def test_missing_country_same_region_and_trip_type(self):
+        r = self.agent().handle(message="хочу на Пхукет в декабре вдвоём из Москвы")
+        self.assertIn("По направлению «Пхукет» у меня нет данных", r.message)
+        self.assertIn(self.top(r)[0]["name"], ("Санья", "Окинава"))   # море и природа в Азии, а не Эмираты
+
+    def test_missing_ski_resort_is_honest(self):
+        r = self.agent().handle(message="Шерегеш в январе вдвоём из Москвы")
+        self.assertIn("По направлению «Шерегеш» у меня нет данных", r.message)
+        self.assertIn("горнолыжных курортов", r.message.lower())
+        self.assertEqual(self.top(r)[0]["country"], "Россия")
+
+    def test_unknown_place_without_hints(self):
+        r = self.agent().handle(message="хочу в Атлантиду в ноябре вдвоём из Москвы")
+        self.assertIn("у меня нет данных — подбираю по остальным условиям", r.message)
+
     def test_ski_is_not_in_catalog(self):
         r = self.agent().handle(message="на лыжах в январе вдвоём из Москвы")
         self.assertIn("горнолыжных курортов", r.message.lower())

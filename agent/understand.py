@@ -11,6 +11,7 @@ import re
 from datetime import date, timedelta
 
 from agent.normalize import english_to_russian, fix_typos
+from agent.places import lookup_place, tags_label
 from agent.state import TripState
 from tools import get_backend
 
@@ -86,8 +87,11 @@ def rule_patch(message: str, state: TripState, today: date | None = None) -> dic
     elif m := re.search(r"(?i:\bиз)\s+([А-ЯЁ][а-яё\-]+)", message):
         p["unknown_origin"] = m.group(1)          # город с заглавной, но мы его не знаем — скажем честно
     dest = be.find_destination_by_text(re.sub(r"\bиз\s+[а-я\-]+", "", t))
+    place = None if dest else lookup_place(re.sub(r"\bиз\s+[а-я\-]+", "", t))
     if dest:
         p["destination_name"] = dest["name"]
+    elif place:
+        p["destination_name"] = place["name"]      # известное место, которого нет в каталоге — скажем честно
     else:
         for m in re.finditer(r"(?i:\b(?:в|во|на))\s+([А-ЯЁ][а-яёА-ЯЁ\-]+)", message):
             if not m.group(1).lower().startswith(NOT_PLACES):
@@ -266,6 +270,15 @@ def apply_patch(state: TripState, p: dict) -> set[str]:
             setf("destination", state.selection, "destination_id", d["id"])
             if "destination_id" not in state.selection.locked:
                 state.selection.locked.append("destination_id")
+            state.like_place = None
+        else:
+            # данных по месту нет: подбираем похожее — та же страна, регион, тип отдыха (видно как допущение)
+            place = lookup_place(p["destination_name"])
+            setf("trip_type", state, "like_place", place)
+            if place:
+                setf("trip_type", state, "trip_type", sorted(set(state.trip_type) | set(place["tags"])))
+                state.add_assumption("like_place", f"похожий отдых: {tags_label(place['tags'])}",
+                                     f"по направлению «{place['name']}» нет данных")
 
     # даты
     if p.get("month"):

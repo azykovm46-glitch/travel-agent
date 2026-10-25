@@ -16,6 +16,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 
 from agent import policy
+from agent.places import lookup_place, tags_label
 from agent.after_booking import build_reminders, request_early_checkin
 from agent.explain import (_rub, explain_destination, explain_hotel, explain_transport, MEAL_NAME,
                            unsupported_numbers)
@@ -175,7 +176,13 @@ class TravelAgent:
                          "С этим вопросом не подскажу, а поездку давайте соберём.")
         name = patch.get("destination_name")
         if name and not be.find_destination_by_text(name):
-            notes.append(f"«{name}» нет среди направлений, с которыми я работаю, — подбираю по остальным условиям.")
+            place = lookup_place(name)
+            if place:
+                same = any(d["country"] == place["country"] for d in state.candidates.get("destinations", []))
+                notes.append(f"По направлению «{place['name']}» у меня нет данных — показываю ближайшее из того, что есть: "
+                             + (f"тоже {place['country']}." if same else f"похожий отдых ({tags_label(place['tags'])})."))
+            else:
+                notes.append(f"По направлению «{name}» у меня нет данных — подбираю по остальным условиям.")
         raw = patch.get("unknown_origin")
         if raw and not patch.get("origin_city"):
             notes.append(f"Вылеты «из {raw}» пока не умею искать — "
