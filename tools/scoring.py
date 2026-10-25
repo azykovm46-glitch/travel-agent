@@ -146,6 +146,7 @@ def score_destinations(dests: list[dict], state: TripState) -> list[dict]:
             else:
                 s -= 0.3
                 minus.append("в эти даты не сезон для лыж")
+                reasons = [r for r in reasons if r != "подходит под тип отдыха"]   # кататься всё равно нельзя
         elif "sea" in state.trip_type:
             water = d["water_temp"] or 0
             warm = max(0.0, min(1.0, (water - 18) / 8))

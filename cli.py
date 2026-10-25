@@ -32,7 +32,8 @@ def show(resp, trace: bool) -> list:
     for c in resp.cards:
         d = c.data
         if c.type == "destination":
-            print(f"  ◆ {d['rank']}. {d['name']} ({d['country']}): воздух {d['air_temp']}°, вода {d['water_temp']}°, "
+            water = f"вода {d['water_temp']}°, " if d["water_temp"] is not None else ""
+            print(f"  ◆ {d['rank']}. {d['name']} ({d['country']}): воздух {d['air_temp']}°, {water}"
                   f"{d['flight_hours']} ч, ~{d['est_total_rub']:,} ₽".replace(",", " "))
         elif c.type == "plan":
             print(f"  ▣ План: {d['destination']['name']} {d['check_in']}–{d['check_out']}, "
