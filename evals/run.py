@@ -11,6 +11,8 @@
   stitch_err   — число ошибок стыковок (level=error) в итоговых планах
   explained    — доля планов с непустым «почему»
   correct      — доля сценариев с полем expect, где агент понял запрос правильно
+  llm_understand / llm_write — доля ходов, где разбор / текст реально дала LLM (без --offline;
+                 при сбоях API агент молча уходит на правила, и метрики становятся офлайновыми)
 
 Поле expect в queries.jsonl (все ключи необязательны):
   top_dest_in / top_dest_not — id направлений, допустимые / недопустимые на первом месте
@@ -76,6 +78,18 @@ def run(offline: bool) -> dict:
         q = json.loads(line)
         agent = TravelAgent()
         t0, first_rec, questions, turns, err = time.perf_counter(), None, 0, 0, None
+        llm_turns = {"understand": [0, 0], "write": [0, 0]}     # [ходов с LLM, всего ходов шага]
+        handle = agent.handle
+
+        def counted(*a, **kw):
+            r = handle(*a, **kw)
+            for step in r.trace:
+                if step.step in llm_turns:
+                    llm_turns[step.step][1] += 1
+                    llm_turns[step.step][0] += step.detail.startswith(("LLM", "текст от LLM"))
+            return r
+
+        agent.handle = counted
         resp = first = agent.handle(message=q["text"])
         try:
             while turns < 6:
@@ -102,7 +116,7 @@ def run(offline: bool) -> dict:
             "stitch_errors": sum(1 for i in plan.get("issues", []) if i["level"] == "error"),
             "explained": bool(plan.get("hotel", {}).get("explanation", {}).get("why")),
             "expect_fails": check(q["expect"], first, resp) if "expect" in q else None,
-            "error": err,
+            "error": err, "llm_turns": llm_turns,
         })
     recs = [r["first_rec_s"] for r in rows if r["first_rec_s"] is not None]
     planned = [r for r in rows if r["booked"]]
@@ -116,6 +130,9 @@ def run(offline: bool) -> dict:
         "explained": round(sum(r["explained"] for r in planned) / max(1, len(planned)), 2),
         "correct": round(sum(not r["expect_fails"] for r in checked) / len(checked), 2) if checked else None,
     }
+    for step in ("understand", "write"):
+        used, total = (sum(r["llm_turns"][step][i] for r in rows) for i in (0, 1))
+        summary[f"llm_{step}"] = round(used / total, 2) if total else None   # доля ходов, где реально ответила LLM
     return {"summary": summary, "rows": rows}
 
 
