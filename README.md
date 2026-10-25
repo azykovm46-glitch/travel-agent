@@ -65,7 +65,7 @@ uvicorn api.main:app --reload --port 8000      # документация на /
 ## Проверка
 ```bash
 python -m unittest discover -s tests -v   # 57 тестов, без сети и LLM
-python evals/run.py --offline             # метрики на 22 запросах
+python evals/run.py --offline             # метрики на 24 запросах
 python scripts/demo.py                    # 5 демо-сценариев через API
 ```
 Сейчас офлайн: completion 1.0, correct 1.0, ошибок стыковки 0, в среднем 0.5 уточняющих вопроса.

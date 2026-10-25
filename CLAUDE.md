@@ -52,7 +52,7 @@ uvicorn api.main:app --reload --port 8000  # API для фронтенда
 
 ## Правила работы
 - После любого изменения логики: `python -m unittest discover -s tests` и `python evals/run.py --offline`.
-  Метрики не должны ухудшаться (сейчас на 22 запросах: completion 1.0, stitch_err 0, correct 1.0).
+  Метрики не должны ухудшаться (сейчас на 24 запросах: completion 1.0, stitch_err 0, correct 1.0; с LLM — то же, плюс llm_understand ≥ 0.9).
   Новый сложный запрос в evals — сразу с полем `expect`, иначе он проверяет только «дошёл до брони».
 - Новое поведение — сначала тест в `tests/test_agent.py`, потом код.
 - Контракты с командой — `docs/CONTRACTS.md`. Меняешь формат ответа или инструмента — обнови файл
