@@ -84,7 +84,7 @@ def score_hotels(hotels: list[dict], state: TripState) -> list[dict]:
         if state.travelers.has_kids and (h["family_rooms"] or h["kids_club"]):
             bonus += 0.05
         if state.budget.level == "high":
-            bonus += 0.05 * (h["stars"] - 3)       # «люкс»: звёздность важнее цены
+            bonus += 0.05 * ((h["stars"] or 3) - 3)  # «люкс»: звёздность важнее цены; нет звёзд в OSM — нейтрально
         score = sum(bd[k] * w[k] for k in bd) + bonus
         scored.append({**h, "score": round(score, 3), "breakdown": {k: round(v, 2) for k, v in bd.items()}})
     return sorted(scored, key=lambda x: x["score"], reverse=True)
@@ -160,6 +160,8 @@ def score_destinations(dests: list[dict], state: TripState) -> list[dict]:
                 minus.append(f"вода прохладная, около {water}°C")
         else:
             s += 0.25 * max(0.0, min(1.0, (d["air_temp"] - 5) / 20))
+        if d.get("travel_note"):
+            minus.append(d["travel_note"])       # «прямых рейсов из России нет» и т.п. — из бэкенда как есть
         hours = d["flight_hours"]
         if d.get("train_hours") and state.constraints.transport == "train":
             hours = d["train_hours"]

@@ -45,7 +45,7 @@ def build_reminders(plan: dict) -> list[dict]:
 def request_early_checkin(plan: dict, backend) -> dict:
     """Запросить ранний заезд. Функция бэкенда необязательна: без неё — «запрос отправлен»."""
     hotel = plan["hotel"]
-    if not hotel.get("early_checkin"):
+    if hotel.get("early_checkin") is False:          # None — бэкенд не знает: не отказываем за отель
         status = "declined"
     elif fn := getattr(backend, "request_early_checkin", None):
         status = fn(hotel["id"], date.fromisoformat(plan["check_in"]), plan["outbound"]["arrival"]).get("status", "requested")

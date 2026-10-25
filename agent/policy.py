@@ -10,8 +10,11 @@ from datetime import date
 
 from agent.schemas import Question, QuickReply
 from agent.state import TripState
+from tools import get_backend
 
 REQUIRED = ["origin", "dates", "travelers"]
+ORIGIN_OPTIONS = [("Москва", "Москвы"), ("Санкт-Петербург", "Санкт-Петербурга"), ("Казань", "Казани"),
+                  ("Екатеринбург", "Екатеринбурга")]
 MAX_QUESTIONS = 2
 MAX_ROUNDS = 1
 
@@ -34,9 +37,11 @@ def build_questions(state: TripState, today: date | None = None) -> list[Questio
     qs: list[Question] = []
     for slot in missing_slots(state)[:MAX_QUESTIONS]:
         if slot == "origin":
+            # бэкенд может летать не отовсюду (реальный — только из Москвы): предлагаем только то, что он умеет
+            supported = getattr(get_backend(), "SUPPORTED_ORIGINS", None)
             qs.append(Question(slot=slot, text="Откуда отправляетесь?", options=[
-                QuickReply(label=c, text=f"из {t}") for c, t in
-                [("Москва", "Москвы"), ("Санкт-Петербург", "Санкт-Петербурга"), ("Казань", "Казани"), ("Екатеринбург", "Екатеринбурга")]]))
+                QuickReply(label=c, text=f"из {t}") for c, t in ORIGIN_OPTIONS
+                if supported is None or c in supported]))
         elif slot == "dates":
             m1 = today.month % 12 + 1
             m2 = m1 % 12 + 1

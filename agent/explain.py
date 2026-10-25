@@ -38,7 +38,7 @@ def explain_hotel(h: dict, state: TripState, all_hotels: list[dict]) -> dict:
     good = {
         "price": "один из самых выгодных среди подходящих",
         "location": f"{h['beach_m']} м до пляжа" if sea else f"{h['center_km']} км до центра",
-        "rating": f"оценка {h['rating']} по {h['reviews']} отзывам",
+        "rating": f"оценка {h['rating']}" + (f" по {h['reviews']} отзывам" if h.get("reviews") else ""),
         "cancellation": f"бесплатная отмена за {h['cancellation_deadline_days']} дн. до заезда",
         "meals": MEAL_NAME[h["meals"]],
         "travel_time": f"{h['airport_km']} км от аэропорта",
@@ -66,7 +66,7 @@ def explain_hotel(h: dict, state: TripState, all_hotels: list[dict]) -> dict:
     risks = []
     if not h["free_cancellation"]:
         risks.append("при отмене деньги не вернут")
-    if h["reviews"] < 60:
+    if h.get("reviews") is not None and h["reviews"] < 60:     # реальный бэкенд отзывов не знает — None
         risks.append(f"мало отзывов ({h['reviews']}) — оценка может быть неточной")
     risks += [f"в отзывах жалуются: {c}" for c in h["review_cons"]]
     return {"why": why, "tradeoffs": tradeoffs, "risks": risks}

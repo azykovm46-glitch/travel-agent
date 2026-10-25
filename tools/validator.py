@@ -26,6 +26,10 @@ def validate_plan(plan: dict, travelers_total: int, pets: int, budget_rub: int |
         add("error", "incomplete", "В плане не хватает перелёта/поезда или отеля")
         return issues
 
+    if out.get("note"):                    # пометка бэкенда о маршруте («прямых рейсов из России нет»)
+        add("warning", "route_note", out["note"][:1].upper() + out["note"][1:],
+            "уточнить реальные рейсы перед покупкой")
+
     arrival = _t(out["arrival"])
     at_hotel = arrival + timedelta(minutes=tin["minutes"] if tin else 60)
     hotel_checkin = datetime.combine(datetime.fromisoformat(check_in_d).date(),
