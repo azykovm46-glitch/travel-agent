@@ -26,6 +26,18 @@
 
 Необязательная функция: `request_early_checkin(hotel_id, check_in: date, arrival: str) -> {"status": "confirmed" | "on_request"}`.
 Если её нет, агент пишет «запрос отправлен» (статус `requested`); если у отеля `early_checkin=false` — сам отвечает «нет».
+`early_checkin=null` значит «неизвестно» — агент не отказывает за отель, а отправляет запрос.
+
+Необязательные поля и атрибуты (агент работает и без них):
+- модуль: `SUPPORTED_ORIGINS` — список городов вылета; уточняющий вопрос «Откуда?» предлагает только их;
+- `search_destinations`: `travel_note` — оговорка о маршруте, агент показывает её в минусах направления;
+- `search_transport`: `note` — то же для рейса, в плане становится предупреждением `route_note`;
+  `departure_utc_offset` / `arrival_utc_offset` — пояса; `departure` и `arrival` всегда в местном времени города;
+- `search_hotels`: `stars` и `reviews` могут быть `null` (нет в источнике), `review_pros` / `review_cons` — пустыми.
+
+Реальный бэкенд участника 2 подключается адаптером `tools/real_backend.py`
+(`TOOLS_BACKEND=tools.real_backend`, путь к репозиторию — `HACKATHON_BACKEND_DIR`, по умолчанию `../hackathon-backend`).
+Его код не меняем: справочник направлений и климат — в адаптере, вылеты пока только из Москвы.
 
 ## 2. API (роль A ↔ роль C)
 
