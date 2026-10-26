@@ -127,4 +127,5 @@ understood 1.0, in_data 0.75 (нет Стамбула, Казани, Пхуке�
 ## Документы
 - [`CLAUDE.md`](CLAUDE.md) — контекст и правила работы для Claude Code
 - [`docs/CONTRACTS.md`](docs/CONTRACTS.md) — контракты инструментов и API для команды
+- [`docs/PITCH_NOTES.md`](docs/PITCH_NOTES.md) — материал для презентации: как устроен агент, примеры ответов, цифры
 - [`docs/CLAUDE_CODE_PROMPTS.md`](docs/CLAUDE_CODE_PROMPTS.md) — задачи роли A по фазам хакатона
