@@ -72,6 +72,18 @@ class WebSocketTest(unittest.TestCase):
             last = receive_turn(ws)[-1]
         self.assertEqual(last["data"]["stage"], "booked")
 
+    def test_agent_crash_is_reported_and_connection_survives(self):
+        from unittest import mock
+        from api import main
+        with TestClient(app).websocket_connect("/api/chat/ws") as ws:
+            with mock.patch.object(main.agent, "handle", side_effect=RuntimeError("бэкенд упал")):
+                ws.send_json({"message": PLAN_QUERY})
+                last = receive_turn(ws)[-1]
+            self.assertEqual(last["type"], "error")
+            self.assertIn("бэкенд упал", last["detail"])
+            ws.send_json({"message": PLAN_QUERY})
+            self.assertEqual(receive_turn(ws)[-1]["type"], "response")
+
     def test_bad_request_keeps_connection(self):
         with TestClient(app).websocket_connect("/api/chat/ws") as ws:
             ws.send_json({})

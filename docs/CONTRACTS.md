@@ -101,6 +101,9 @@
 {"type": "error", "detail": "нужно message или action"}
 ```
 `label` — что показать в панели «Как агент думает», пока шаг идёт; `response` всегда последний (или `error`).
+`step_start` и `trace` приходят парами по мере выполнения шагов (`understand`, `search_hotels`, `score`, `assemble`…);
+список `trace` в `response` совпадает с пришедшими событиями `trace`. После `error` соединение живо — можно слать следующий ход.
+Пример полного хода — `stream` в `docs/api_examples.json`.
 REST остаётся как был — WebSocket нужен только для живой панели шагов.
 
 `GET /api/health` показывает, включена ли LLM, доступна ли сейчас (`llm_available`), в каком режиме

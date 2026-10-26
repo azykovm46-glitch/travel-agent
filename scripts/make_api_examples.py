@@ -50,11 +50,26 @@ def main() -> None:
     call("unknown_place", "Место не из каталога: агент честно говорит об этом в message",
          {"session_id": None, "message": "хочу в Атлантиду из Москвы в декабре вдвоём", "action": None})
 
+    # Тот же ход через WS /api/chat/ws: события шагов по мере выполнения, последним — response.
+    # data в response — ровно AgentResponse из POST, здесь сокращён, чтобы не дублировать пример plan
+    body = {"message": "Сочи в ноябре вдвоём из Москвы"}
+    with client.websocket_connect("/api/chat/ws") as ws:
+        ws.send_json(body)
+        events = []
+        while not events or events[-1]["type"] not in ("response", "error"):
+            events.append(ws.receive_json())
+    data = events[-1]["data"]
+    events[-1]["data"] = {"session_id": data["session_id"], "stage": data["stage"], "message": data["message"],
+                          "...": "остальные поля AgentResponse, как в примере plan"}
+    examples.append({"name": "stream", "note": "WS /api/chat/ws: step_start → trace по каждому шагу → response",
+                     "request": body, "events": events})
+
     out = ROOT / "docs" / "api_examples.json"
     out.write_text(json.dumps(examples, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     for e in examples:
-        cards = ", ".join(c["type"] for c in e["response"]["cards"])
-        print(f"{e['name']:<14} stage={e['response']['stage']:<8} cards=[{cards}]")
+        resp = e.get("response") or e["events"][-1]["data"]
+        cards = ", ".join(c["type"] for c in resp.get("cards", []))
+        print(f"{e['name']:<14} stage={resp['stage']:<8} cards=[{cards}]")
     print(f"\n→ {out.relative_to(ROOT)} ({out.stat().st_size // 1024} КБ)")
 
 
