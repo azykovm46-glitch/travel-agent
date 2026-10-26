@@ -87,9 +87,8 @@
 - **Деплой**: `Dockerfile` (Python 3.12, `uvicorn` на `$PORT`, не root), `.dockerignore` (без `.env`, баз, `.venv`),
   `render.yaml`, инструкция в README. Проверено «насухо»: контекст по `.dockerignore` из папки с настоящим `.env` —
   ни `.env`, ни ключа; зависимости в чистом окружении, сервер командой из `CMD` отвечает на `/api/health`, `/`,
-  `/api/chat`. **Не проверено**: `docker build` (Docker на машине нет) и CI — GitHub не принял workflow:
-  у токена `gh` нет права `workflow`. Готовый workflow — `deploy/docker-ci.yml`: после
-  `gh auth refresh -h github.com -s workflow` перенести в `.github/workflows/docker.yml` и запушить.
+  `/api/chat`. **Проверено в CI** (`.github/workflows/docker.yml`, GitHub Actions): `docker build` проходит, в образе
+  нет ни `.env`, ни подложенного перед сборкой фальшивого ключа, контейнер отвечает на `/api/health`, `/`, `/api/chat`.
 - **«Лыжи + пляж»**: один вопрос «что важнее?» с кнопками «Лыжи» / «Пляж и море» в общем раунде уточнений.
 - **`english-family`** (Хургада вместо Антальи): LLM возвращала `destination_name: "Antalya"` латиницей и
   перекрывала верный разбор правил («Анталья»); латинского нет в каталоге → «похожее» направление. Теперь
@@ -115,7 +114,7 @@
    в `LLM_FALLBACK_BASE_URL` / `LLM_FALLBACK_API_KEY` и модель в `LLM_FALLBACK_MODEL`.
 6. ~~«Лыжи + пляж»~~ — агент спрашивает, что важнее.
 7. Polza часто отдаёт 429/503 и отвечает по 13–30 с даже на короткий запрос; запасная — `deepseek/deepseek-v4.1-flash`.
-8. Проверить образ настоящим `docker build` (локальный Docker или CI после права `workflow`).
+8. ~~Проверить образ настоящим `docker build`~~ — CI зелёный 26.10. Задеплоить на Render (`render.yaml`) и вписать адрес.
 9. Заметка «по направлению «Атлантиду» нет данных» — название в винительном падеже, как в запросе.
 
 ## Вопросы к участнику 2
