@@ -17,6 +17,9 @@ ORIGIN_OPTIONS = [("Москва", "Москвы"), ("Санкт-Петербу�
                   ("Екатеринбург", "Екатеринбурга")]
 MAX_QUESTIONS = 2
 MAX_ROUNDS = 1
+# Типы отдыха, которые в одной поездке не совместить: спрашиваем один раз, что важнее
+CONFLICTS = [("Лыжи и пляж в одной поездке не совместить — что важнее?",
+              [("ski", "Лыжи", "важнее лыжи"), ("sea", "Пляж и море", "важнее пляж")])]
 
 MONTH_IN = ["январе", "феврале", "марте", "апреле", "мае", "июне", "июле", "августе",
             "сентябре", "октябре", "ноябре", "декабре"]
@@ -30,12 +33,23 @@ def missing_slots(state: TripState) -> list[str]:
     return [s for s in REQUIRED if s not in state.confirmed]
 
 
+def type_conflict(state: TripState) -> tuple | None:
+    """Пара несовместимых типов отдыха в запросе, о которой ещё не спрашивали."""
+    if state.selection.destination_id or "trip_priority" in state.confirmed:
+        return None
+    return next((c for c in CONFLICTS if all(t[0] in state.trip_type for t in c[1])), None)
+
+
 def build_questions(state: TripState, today: date | None = None) -> list[Question]:
     today = today or date.today()
     if state.clarify_rounds >= MAX_ROUNDS:
         return []
     qs: list[Question] = []
-    for slot in missing_slots(state)[:MAX_QUESTIONS]:
+    conflict = type_conflict(state)
+    if conflict:
+        qs.append(Question(slot="trip_type", text=conflict[0],
+                           options=[QuickReply(label=label, text=text) for _, label, text in conflict[1]]))
+    for slot in missing_slots(state)[:MAX_QUESTIONS - len(qs)]:
         if slot == "origin":
             # бэкенд может летать не отовсюду (реальный — только из Москвы): предлагаем только то, что он умеет
             supported = getattr(get_backend(), "SUPPORTED_ORIGINS", None)
@@ -78,7 +92,7 @@ def next_step(state: TripState, intent: str) -> str:
         return "checkout"
     if intent == "select":
         return "select"
-    if missing_slots(state) and state.clarify_rounds < MAX_ROUNDS:
+    if (missing_slots(state) or type_conflict(state)) and state.clarify_rounds < MAX_ROUNDS:
         return "clarify"
     if not state.selection.destination_id:
         return "inspire"

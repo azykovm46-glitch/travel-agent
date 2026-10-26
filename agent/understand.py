@@ -132,6 +132,8 @@ def rule_patch(message: str, state: TripState, today: date | None = None) -> dic
     if re.search(r"лыж|сноуборд|горнолыж", t_types): types.append("ski")
     if re.search(r"гастро|поесть|кухн", t_types): types.append("food")
     if types: p["trip_type"] = types
+    m = re.search(r"важнее\s+(лыж|пляж|мор)", t)          # ответ на «лыжи или пляж — что важнее?»
+    if m: p["trip_type_only"] = ["ski" if m.group(1) == "лыж" else "sea"]
     m = re.search(r"\b(к|на|в)\s+(тепл\w*\s+)?(мор\w*|пляж\w*|гор\w*)", t_types)
     if m: p["destination_hint"] = m.group(0)
 
@@ -288,6 +290,10 @@ def apply_patch(state: TripState, p: dict) -> set[str]:
     if p.get("trip_type"):
         new = sorted(set(state.trip_type) | set(p["trip_type"]))
         setf("trip_type", state, "trip_type", new)
+    if p.get("trip_type_only"):                   # выбрал одно из несовместимого — остальное убираем
+        setf("trip_type", state, "trip_type", list(p["trip_type_only"]))
+        state.destination_hint = None             # «на пляже» из противоречивого запроса больше не про поездку
+        _confirm(state, "trip_priority")
     if p.get("destination_name"):
         d = be.find_destination_by_text(p["destination_name"])
         if d:

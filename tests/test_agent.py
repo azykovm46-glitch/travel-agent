@@ -601,6 +601,45 @@ class AfterBookingTest(unittest.TestCase):
         self.assertTrue(all(x.get("pets_ok", True) for x in card["items"]))
 
 
+class ConflictingTypesTest(unittest.TestCase):
+    """«Лыжи + пляж»: один раз спросить, что важнее, а не выбирать молча."""
+    QUERY = "хочу одновременно на лыжах и на пляже в августе из Казани вдвоём"
+
+    def test_asks_what_matters_with_two_buttons(self):
+        r = new_agent().handle(message=self.QUERY)
+        self.assertEqual(r.stage, "clarify")
+        q = r.questions[0]
+        self.assertEqual(q.slot, "trip_type")
+        self.assertEqual([o.label for o in q.options], ["Лыжи", "Пляж и море"])
+        self.assertIn("Лыжи и пляж в одной поездке не совместить", r.message)
+
+    def test_answer_keeps_only_chosen_type(self):
+        a = new_agent()
+        r = a.handle(message=self.QUERY)
+        r = a.handle(r.session_id, message=r.questions[0].options[1].text)
+        self.assertEqual(r.stage, "inspire")
+        self.assertEqual(r.state.trip_type, ["sea"])
+        self.assertNotIn("лыж", r.message.lower())
+        self.assertNotIn("не сезон", r.message)
+        self.assertIn("sea", r.cards[0].data["tags"])
+
+    def test_asked_only_once(self):
+        a = new_agent()
+        r = a.handle(message=self.QUERY)
+        r = a.handle(r.session_id, message="давай дальше")
+        self.assertNotEqual(r.stage, "clarify")
+
+    def test_shares_round_with_missing_slots(self):
+        r = new_agent().handle(message="на лыжах и на пляже в августе")
+        self.assertEqual(r.stage, "clarify")
+        self.assertLessEqual(len(r.questions), 2)
+        self.assertEqual(r.questions[0].slot, "trip_type")
+
+    def test_no_question_without_conflict(self):
+        r = new_agent().handle(message="на лыжах в феврале из Москвы вдвоём")
+        self.assertNotEqual(r.stage, "clarify")
+
+
 class ConstraintHonestyTest(unittest.TestCase):
     """Невыполнимое явное условие агент не подменяет молча, а говорит, что сделал вместо него."""
 
