@@ -640,6 +640,7 @@ def llm_with(client) -> LLM:
     llm = LLM()
     llm.enabled, llm.model, llm._client = True, "fake", client
     llm.fallback_model = llm.reasoning_effort = ""     # не зависеть от .env разработчика
+    llm.retries, llm.retry_pause = 1, 0
     return llm
 
 
@@ -666,6 +667,54 @@ class LLMClientTest(unittest.TestCase):
         self.assertIsNone(llm.extract_patch("y", "{}", "2026-10-25"))
         self.assertEqual(client.calls, ["tools"])                       # следующие вызовы не пошли в сеть
         self.assertIn("пауза", llm.last_error)
+
+    def test_retries_main_model_on_503_before_fallback(self):
+        client = FakeClient(tools='{"intent": "plan"}')
+        orig, seen = client.create, []
+
+        def create(**kw):                     # Polza: «не удалось проверить лимиты» — через секунду проходит
+            seen.append(kw["model"])
+            if len(seen) == 1:
+                raise ApiError(503)
+            return orig(**kw)
+
+        client.chat.completions.create = create
+        llm = llm_with(client)
+        llm.model, llm.fallback_model = "main", "backup"
+        self.assertEqual(llm.extract_patch("x", "{}", "2026-10-25"), {"intent": "plan"})
+        self.assertEqual(seen, ["main", "main"])
+
+    def test_gives_up_on_main_after_retries_and_uses_fallback(self):
+        client = FakeClient(tools='{"intent": "plan"}')
+        orig, seen = client.create, []
+
+        def create(**kw):
+            seen.append(kw["model"])
+            if kw["model"] == "main":
+                raise ApiError(503)
+            return orig(**kw)
+
+        client.chat.completions.create = create
+        llm = llm_with(client)
+        llm.model, llm.fallback_model = "main", "backup"
+        self.assertEqual(llm.extract_patch("x", "{}", "2026-10-25"), {"intent": "plan"})
+        self.assertEqual(seen, ["main", "main", "backup"])
+
+    def test_rate_limit_goes_to_fallback_without_retry(self):
+        client = FakeClient(tools='{"intent": "plan"}')
+        orig, seen = client.create, []
+
+        def create(**kw):
+            seen.append(kw["model"])
+            if kw["model"] == "main":
+                raise ApiError(429)
+            return orig(**kw)
+
+        client.chat.completions.create = create
+        llm = llm_with(client)
+        llm.model, llm.fallback_model = "main", "backup"
+        llm.extract_patch("x", "{}", "2026-10-25")
+        self.assertEqual(seen, ["main", "backup"])
 
     def test_reasoning_effort_is_sent_only_when_set(self):
         seen = []

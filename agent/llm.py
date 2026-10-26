@@ -8,6 +8,8 @@
   tools — принудительный вызов инструмента (лучший вариант, умеют не все модели);
   json  — response_format json_object + схема в промпте;
   text  — схема в промпте, JSON вырезаем из текста ответа.
+На 503 и таймаут модель переспрашиваем LLM_RETRIES раз (по умолчанию 1) с паузой LLM_RETRY_PAUSE,
+потом идём на запасную; повторы SDK openai выключены, чтобы таймаут не стоил 3 × LLM_TIMEOUT.
 Если API лежит (сеть, таймаут, лимит), LLM отключается на COOLDOWN_S секунд,
 чтобы на демо каждый ход не ждал таймаута, — агент продолжает на правилах.
 """
@@ -26,6 +28,7 @@ log = logging.getLogger(__name__)
 MODES = ("tools", "json", "text")
 UNSUPPORTED = {400, 404, 422}      # модель не умеет режим/параметр — пробуем режим попроще
 COOLDOWN_S = 60
+TRANSIENT = {503}                  # провайдер на секунду недоступен (Polza: «не удалось проверить лимиты»)
 SCHEMA = UPDATE_TRIP_STATE_TOOL["function"]["parameters"]["properties"]
 
 
@@ -99,6 +102,8 @@ class LLM:
         self.model = os.getenv("LLM_MODEL", "")
         self.fallback_model = os.getenv("LLM_FALLBACK_MODEL", "")
         self.timeout = float(os.getenv("LLM_TIMEOUT", "25"))
+        self.retries = min(2, max(0, int(os.getenv("LLM_RETRIES", "1"))))
+        self.retry_pause = float(os.getenv("LLM_RETRY_PAUSE", "2"))
         # none | low | high — для «думающих» моделей; пусто — не отправляем, решает провайдер
         self.reasoning_effort = os.getenv("LLM_REASONING_EFFORT", "")
         self.enabled = bool(self.api_key and self.model) and os.getenv("AGENT_OFFLINE") != "1"
@@ -113,7 +118,8 @@ class LLM:
     def client(self):
         if self._client is None:
             from openai import OpenAI   # импорт здесь, чтобы офлайн-режим работал без пакета
-            self._client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout)
+            self._client = OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=self.timeout,
+                                  max_retries=0)
         return self._client
 
     @property
@@ -127,7 +133,7 @@ class LLM:
             kwargs["extra_body"] = {"reasoning": {"effort": self.reasoning_effort}}
         for model in [m for m in (self.model, self.fallback_model) if m]:
             try:
-                return self.client.chat.completions.create(model=model, **kwargs)
+                return self._create(model, kwargs)
             except Exception as e:     # сеть, лимиты, неверная модель — пробуем запасную
                 # запасная не умеет режим, а основная просто перегружена: режим не понижаем, ждём основную
                 if last_err is not None and getattr(e, "status_code", None) in UNSUPPORTED \
@@ -137,6 +143,18 @@ class LLM:
                 last_err = e
                 log.warning("LLM %s failed: %s", model, e)
         raise last_err
+
+    def _create(self, model: str, kwargs: dict):
+        """Запрос к одной модели; на 503 и таймаут — повтор с паузой."""
+        for attempt in range(self.retries + 1):
+            try:
+                return self.client.chat.completions.create(model=model, **kwargs)
+            except Exception as e:
+                transient = getattr(e, "status_code", None) in TRANSIENT or "Timeout" in type(e).__name__
+                if not transient or attempt == self.retries:
+                    raise
+                log.warning("LLM %s: %s — повтор через %s с", model, e, self.retry_pause)
+                time.sleep(self.retry_pause)
 
     def _fail(self, e: Exception) -> None:
         self.last_error = str(e)[:120]          # видно в trace: LLM включена, но упала
