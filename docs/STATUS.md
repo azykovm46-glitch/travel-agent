@@ -88,8 +88,8 @@
   `render.yaml`, инструкция в README. Проверено «насухо»: контекст по `.dockerignore` из папки с настоящим `.env` —
   ни `.env`, ни ключа; зависимости в чистом окружении, сервер командой из `CMD` отвечает на `/api/health`, `/`,
   `/api/chat`. **Не проверено**: `docker build` (Docker на машине нет) и CI — GitHub не принял workflow:
-  у токена `gh` нет права `workflow`. Файл workflow сохранён вне репозитория; добавить после
-  `gh auth refresh -h github.com -s workflow`.
+  у токена `gh` нет права `workflow`. Готовый workflow — `deploy/docker-ci.yml`: после
+  `gh auth refresh -h github.com -s workflow` перенести в `.github/workflows/docker.yml` и запушить.
 - **«Лыжи + пляж»**: один вопрос «что важнее?» с кнопками «Лыжи» / «Пляж и море» в общем раунде уточнений.
 - **`english-family`** (Хургада вместо Антальи): LLM возвращала `destination_name: "Antalya"` латиницей и
   перекрывала верный разбор правил («Анталья»); латинского нет в каталоге → «похожее» направление. Теперь
