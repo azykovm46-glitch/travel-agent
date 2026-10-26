@@ -1072,6 +1072,14 @@ class LLMClientTest(unittest.TestCase):
         llm.extract_patch("x", "{}", "2026-10-25")
         self.assertEqual(seen, ["main", "backup"])
 
+    def test_cooldown_can_be_disabled_for_evals(self):
+        client = FakeClient(tools=ApiError(None))
+        with mock.patch.dict(os.environ, {"LLM_COOLDOWN": "0"}):
+            llm = llm_with(client)
+        self.assertIsNone(llm.extract_patch("x", "{}", "2026-10-25"))
+        self.assertIsNone(llm.extract_patch("y", "{}", "2026-10-25"))
+        self.assertEqual(client.calls, ["tools", "tools"])              # без паузы — каждый ход к провайдеру
+
     def test_reasoning_effort_is_sent_only_when_set(self):
         seen = []
         client = FakeClient(tools='{"intent": "plan"}', text="Готово.")

@@ -18,6 +18,9 @@
   llm_understand / llm_write — доля ходов, где разбор / текст реально дала LLM (без --offline;
                  при сбоях API агент молча уходит на правила, и метрики становятся офлайновыми)
   llm_calls / llm_fail_rate — запросов к провайдеру (модели) и доля упавших (503, 429, таймаут…)
+  verdict      — «недостоверно: сбой провайдера», если упало больше 20% запросов: такой прогон мерит
+                 скорее правила, чем модель; в слайд и в выбор модели его не берём.
+В режиме с LLM пауза после сбоя выключена (LLM_COOLDOWN=0): каждый ход честно идёт к модели.
 
 Поле expect в queries.jsonl (все ключи необязательны):
   top_dest_in / top_dest_not — id направлений, допустимые / недопустимые на первом месте
@@ -42,6 +45,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+
+MAX_FAIL_RATE = 0.2          # больше — прогон «с LLM» недостоверен
 
 # Фразы, которыми агент честно говорит, что нужного нет в данных бэкенда
 MISSING_MARKERS = ("нет данных", "не умею искать", "горнолыжных курортов")
@@ -97,6 +102,8 @@ def run(offline: bool) -> dict:
     load_env()
     if offline:
         os.environ["AGENT_OFFLINE"] = "1"
+    else:
+        os.environ.setdefault("LLM_COOLDOWN", "0")    # на сцене пауза остаётся, в прогоне — мешает мерить модель
     from agent import TravelAgent
     from agent.llm import LLM
 
@@ -176,6 +183,9 @@ def run(offline: bool) -> dict:
     }
     summary["llm_calls"] = calls["total"]
     summary["llm_fail_rate"] = round(calls["failed"] / calls["total"], 2) if calls["total"] else None
+    if calls["total"]:
+        summary["verdict"] = ("недостоверно: сбой провайдера" if calls["failed"] / calls["total"] > MAX_FAIL_RATE
+                              else "достоверно")
     for step in ("understand", "write"):
         used, total = (sum(r["llm_turns"][step][i] for r in rows) for i in (0, 1))
         summary[f"llm_{step}"] = round(used / total, 2) if total else None   # доля ходов, где реально ответила LLM

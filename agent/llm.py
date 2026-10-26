@@ -13,8 +13,9 @@ LLM_FALLBACK_API_KEY; не заданы — она идёт к основном�
 переспрашиваем LLM_RETRIES раз с паузой LLM_RETRY_PAUSE; на таймаут — сразу к запасной: повтор того же
 молчащего провайдера стоил бы ещё LLM_TIMEOUT. Весь запрос с повторами и запасной укладывается в
 LLM_DEADLINE (30 с): каждая попытка получает не больше оставшегося времени. Повторы SDK openai выключены.
-Если API лежит (сеть, таймаут, лимит), LLM отключается на COOLDOWN_S секунд,
-чтобы на демо каждый ход не ждал таймаута, — агент продолжает на правилах.
+Если API лежит (сеть, таймаут, лимит), LLM отключается на LLM_COOLDOWN секунд (по умолчанию 60),
+чтобы на демо каждый ход не ждал таймаута, — агент продолжает на правилах. evals/run.py ставит 0:
+иначе прогон «с LLM» после первого сбоя минуту мерит правила.
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ log = logging.getLogger(__name__)
 
 MODES = ("tools", "json", "text")
 UNSUPPORTED = {400, 404, 422}      # модель не умеет режим/параметр — пробуем режим попроще
-COOLDOWN_S = 60
+COOLDOWN_S = 60                    # по умолчанию; LLM_COOLDOWN переопределяет
 TRANSIENT = {503}                  # провайдер на секунду недоступен (Polza: «не удалось проверить лимиты»)
 SCHEMA = UPDATE_TRIP_STATE_TOOL["function"]["parameters"]["properties"]
 
@@ -108,6 +109,7 @@ class LLM:
         self.fallback_api_key = os.getenv("LLM_FALLBACK_API_KEY", "")
         self.timeout = float(os.getenv("LLM_TIMEOUT", "12"))
         self.deadline = float(os.getenv("LLM_DEADLINE", "30"))      # на один запрос со всеми повторами
+        self.cooldown = float(os.getenv("LLM_COOLDOWN", str(COOLDOWN_S)))
         self.retries = min(2, max(0, int(os.getenv("LLM_RETRIES", "1"))))
         self.retry_pause = float(os.getenv("LLM_RETRY_PAUSE", "2"))
         # none | low | high — для «думающих» моделей; пусто — не отправляем, решает провайдер
@@ -183,9 +185,9 @@ class LLM:
 
     def _fail(self, e: Exception) -> None:
         self.last_error = str(e)[:120]          # видно в trace: LLM включена, но упала
-        if getattr(e, "status_code", None) not in UNSUPPORTED:
-            self._down_until = time.monotonic() + COOLDOWN_S
-            log.warning("LLM недоступна, %s с работаем на правилах: %s", COOLDOWN_S, e)
+        if getattr(e, "status_code", None) not in UNSUPPORTED and self.cooldown > 0:
+            self._down_until = time.monotonic() + self.cooldown
+            log.warning("LLM недоступна, %g с работаем на правилах: %s", self.cooldown, e)
 
     def _extract(self, mode: str, messages: list[dict]) -> dict | None:
         if mode == "tools":
