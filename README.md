@@ -71,7 +71,8 @@ uvicorn api.main:app --reload --port 8000      # документация на /
 
 ## Деплой (Render или Railway)
 Образ — `Dockerfile` (Python 3.12, uvicorn на `$PORT`). `.env` в образ не попадает (`.dockerignore`),
-секреты задаются переменными окружения хостинга.
+секреты задаются переменными окружения хостинга. CI (`.github/workflows/docker.yml`) на каждый push в `main`
+собирает образ, проверяет, что в нём нет `.env`, и опрашивает `/api/health`, `/` и `/api/chat` в контейнере.
 
 ```bash
 docker build -t travel-agent .
