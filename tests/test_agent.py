@@ -551,6 +551,34 @@ class MemoryTest(unittest.TestCase):
         self.assertEqual(r.stage, "clarify")
 
 
+    def test_profile_written_only_after_booking(self):
+        a = TravelAgent(today=TODAY, memory=self.store)
+        r = a.handle(message="Сочи в ноябре вдвоём из Казани", user_id="u5")
+        self.assertEqual(r.stage, "plan")
+        self.assertIsNone(self.store.get("u5"))                          # план без брони — не запоминаем
+        a.handle(r.session_id, action={"type": "checkout"})
+        self.assertEqual(self.store.get("u5")["origin_city"], "Казань")
+
+    def test_without_user_id_memory_is_not_touched(self):
+        self.book("u6", "Сочи в ноябре вдвоём из Казани")
+        before = self._profiles()
+        a = TravelAgent(today=TODAY, memory=self.store)
+        r = a.handle(message="Анталья в декабре втроём из Москвы")       # user_id не передан
+        a.handle(r.session_id, action={"type": "checkout"})
+        self.assertEqual(self._profiles(), before)                        # ничего не записали
+        r = a.handle(message="на море в декабре")
+        self.assertEqual(r.stage, "clarify")                              # и ничего не подставили
+        self.assertFalse([x for x in r.state.assumptions if x.source == "profile"])
+
+    def _profiles(self) -> list:
+        import sqlite3
+        conn = sqlite3.connect(self.store.path)
+        try:
+            return conn.execute("SELECT user_id, data FROM profiles ORDER BY user_id").fetchall()
+        finally:
+            conn.close()
+
+
 class SessionPersistenceTest(unittest.TestCase):
     def test_conversation_survives_server_restart(self):
         path = Path(tempfile.mkdtemp()) / "agent.sqlite3"
