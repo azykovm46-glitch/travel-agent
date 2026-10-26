@@ -165,7 +165,7 @@ def rule_patch(message: str, state: TripState, today: date | None = None) -> dic
     else:
         m = re.search(r"(\d{2,3}[\s ]?\d{3})\s*(р|₽|руб)", t) or re.search(r"бюджет\D{0,10}(\d{5,7})", t)
         if m: p["budget_total_rub"] = int(re.sub(r"\D", "", m.group(1)))
-    if re.search(r"недорог|бюджетн|дешев|эконом", t) and "budget_total_rub" not in p:
+    if re.search(r"недорог|бюджетн|дешев|эконом|денег\s+(?:немного|мало|в обрез)|немного денег|поскромнее|сэконом|скромн\w*\s+бюджет", t) and "budget_total_rub" not in p:
         if re.search(r"(бюджет|подешевл|дешевле)\s*(меньше|поменьше)?", t) and state.plan:
             p["budget_factor"] = 0.85
         else:
