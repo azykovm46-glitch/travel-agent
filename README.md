@@ -69,6 +69,35 @@ uvicorn api.main:app --reload --port 8000      # документация на /
 
 Формат — [`docs/CONTRACTS.md`](docs/CONTRACTS.md), готовые ответы на всех этапах — [`docs/api_examples.json`](docs/api_examples.json).
 
+## Деплой (Render или Railway)
+Образ — `Dockerfile` (Python 3.12, uvicorn на `$PORT`). `.env` в образ не попадает (`.dockerignore`),
+секреты задаются переменными окружения хостинга.
+
+```bash
+docker build -t travel-agent .
+docker run -p 8000:8000 -e AGENT_OFFLINE=1 travel-agent          # без LLM
+docker run -p 8000:8000 --env-file .env travel-agent              # с LLM: ключи из локального .env, не из образа
+curl localhost:8000/api/health                                    # {"ok": true, "llm": …, "backend": …}
+```
+
+**Render**: New → Blueprint → репозиторий (`render.yaml`) — или New → Web Service → Docker.
+Health check path — `/api/health`. В Environment вписать секреты: `LLM_API_KEY` (и при запасном
+провайдере `LLM_FALLBACK_MODEL`, `LLM_FALLBACK_BASE_URL`, `LLM_FALLBACK_API_KEY`).
+**Railway**: New Project → Deploy from GitHub repo → Dockerfile найдётся сам; Variables — те же; Settings →
+Healthcheck Path `/api/health`. Порт оба хостинга передают в `$PORT`, команда запуска уже в образе:
+`uvicorn api.main:app --host 0.0.0.0 --port $PORT`.
+
+| Переменная | Значение | Зачем |
+| --- | --- | --- |
+| `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL` | ключ, `https://polza.ai/api/v1`, `deepseek/deepseek-v4-flash` | основная LLM |
+| `LLM_FALLBACK_*` | см. `.env.example` | запасная модель, можно у другого провайдера |
+| `LLM_REASONING_EFFORT`, `LLM_TIMEOUT` | `none`, `12` | скорость; ожидание при сбое ≤ ~30 с |
+| `AGENT_OFFLINE` | `1` | без LLM — правила и шаблоны (резерв на защите) |
+| `TOOLS_BACKEND` | `tools.mock_backend` | в образе только моки: бэкенд участника 2 не в репозитории |
+| `MEMORY_DB` | `/tmp/profiles.sqlite3` | профили и сессии; на бесплатном тарифе живут до перезапуска |
+
+Проверка после деплоя: `https://<адрес>/api/health` → `"ok": true`, `https://<адрес>/` — веб-интерфейс.
+
 ## Проверка
 ```bash
 python -m unittest discover -s tests -v   # 132 теста, без сети и LLM
