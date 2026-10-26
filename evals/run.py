@@ -17,6 +17,7 @@
   in_data      — доля, где всё нужное нашлось в данных бэкенда
   llm_understand / llm_write — доля ходов, где разбор / текст реально дала LLM (без --offline;
                  при сбоях API агент молча уходит на правила, и метрики становятся офлайновыми)
+  llm_calls / llm_fail_rate — запросов к провайдеру (модели) и доля упавших (503, 429, таймаут…)
 
 Поле expect в queries.jsonl (все ключи необязательны):
   top_dest_in / top_dest_not — id направлений, допустимые / недопустимые на первом месте
@@ -97,7 +98,20 @@ def run(offline: bool) -> dict:
     if offline:
         os.environ["AGENT_OFFLINE"] = "1"
     from agent import TravelAgent
+    from agent.llm import LLM
 
+    calls = {"total": 0, "failed": 0}
+    create = LLM._create
+
+    def counted_create(self, *a, **kw):               # один запрос к модели вместе с повторами на 503
+        calls["total"] += 1
+        try:
+            return create(self, *a, **kw)
+        except Exception:
+            calls["failed"] += 1
+            raise
+
+    LLM._create = counted_create
     rows = []
     for line in (ROOT / "evals" / "queries.jsonl").read_text(encoding="utf-8").splitlines():
         q = json.loads(line)
@@ -160,6 +174,8 @@ def run(offline: bool) -> dict:
         "in_data": round(sum(all(k != "data" for k, _ in r["expect_fails"]) for r in checked)
                          / len(checked), 2) if checked else None,
     }
+    summary["llm_calls"] = calls["total"]
+    summary["llm_fail_rate"] = round(calls["failed"] / calls["total"], 2) if calls["total"] else None
     for step in ("understand", "write"):
         used, total = (sum(r["llm_turns"][step][i] for r in rows) for i in (0, 1))
         summary[f"llm_{step}"] = round(used / total, 2) if total else None   # доля ходов, где реально ответила LLM
