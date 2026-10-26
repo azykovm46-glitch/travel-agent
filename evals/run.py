@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import statistics
 import sys
 import time
@@ -97,7 +98,7 @@ def check(expect: dict, first, final) -> list[tuple[str, str]]:
     return fails
 
 
-def run(offline: bool) -> dict:
+def run(offline: bool, on_row=None) -> dict:
     from cli import load_env
     load_env()
     if offline:
@@ -119,56 +120,63 @@ def run(offline: bool) -> dict:
             raise
 
     LLM._create = counted_create
-    rows = []
-    for line in (ROOT / "evals" / "queries.jsonl").read_text(encoding="utf-8").splitlines():
-        q = json.loads(line)
-        agent = TravelAgent()
-        t0, first_rec, questions, turns, err = time.perf_counter(), None, 0, 0, None
-        llm_turns = {"understand": [0, 0], "write": [0, 0]}     # [ходов с LLM, всего ходов шага]
-        handle = agent.handle
+    rows, interrupted = [], False
+    queries = (ROOT / "evals" / "queries.jsonl").read_text(encoding="utf-8").splitlines()
+    try:
+        for line in queries:
+            q = json.loads(line)
+            agent = TravelAgent()
+            t0, first_rec, questions, turns, err = time.perf_counter(), None, 0, 0, None
+            llm_turns = {"understand": [0, 0], "write": [0, 0]}     # [ходов с LLM, всего ходов шага]
+            handle = agent.handle
 
-        def counted(*a, **kw):
-            r = handle(*a, **kw)
-            for step in r.trace:
-                if step.step in llm_turns:
-                    llm_turns[step.step][1] += 1
-                    llm_turns[step.step][0] += step.detail.startswith(("LLM", "текст от LLM"))
-            return r
+            def counted(*a, **kw):
+                r = handle(*a, **kw)
+                for step in r.trace:
+                    if step.step in llm_turns:
+                        llm_turns[step.step][1] += 1
+                        llm_turns[step.step][0] += step.detail.startswith(("LLM", "текст от LLM"))
+                return r
 
-        agent.handle = counted
-        resp = first = agent.handle(message=q["text"])
-        try:
-            while turns < 6:
-                turns += 1
-                questions += len(resp.questions)
-                if first_rec is None and any(c.type in ("destination", "plan") for c in resp.cards):
-                    first_rec = time.perf_counter() - t0
-                if resp.stage == "booked":
-                    break
-                if resp.questions:
-                    resp = agent.handle(resp.session_id, message=resp.questions[0].options[0].text)
-                elif resp.stage == "inspire" or (resp.stage == "plan" and not resp.state.plan and resp.quick_replies):
-                    resp = agent.handle(resp.session_id, action=resp.quick_replies[0].action)
-                elif resp.stage == "plan" and resp.state.plan:
-                    resp = agent.handle(resp.session_id, action={"type": "checkout"})
-                else:
-                    resp = agent.handle(resp.session_id, message="давай любой вариант")
-        except Exception as e:      # падение = несработавший сценарий, но прогон продолжается
-            err = repr(e)
-        plan = resp.state.plan or {}
-        rows.append({
-            "id": q["id"], "booked": resp.stage == "booked", "turns": turns, "questions": questions,
-            "first_rec_s": round(first_rec, 3) if first_rec is not None else None,
-            "stitch_errors": sum(1 for i in plan.get("issues", []) if i["level"] == "error"),
-            "explained": bool(plan.get("hotel", {}).get("explanation", {}).get("why")),
-            "expect_fails": check(q["expect"], first, resp) if "expect" in q else None,
-            "error": err, "llm_turns": llm_turns,
-        })
+            agent.handle = counted
+            resp = first = agent.handle(message=q["text"])
+            try:
+                while turns < 6:
+                    turns += 1
+                    questions += len(resp.questions)
+                    if first_rec is None and any(c.type in ("destination", "plan") for c in resp.cards):
+                        first_rec = time.perf_counter() - t0
+                    if resp.stage == "booked":
+                        break
+                    if resp.questions:
+                        resp = agent.handle(resp.session_id, message=resp.questions[0].options[0].text)
+                    elif resp.stage == "inspire" or (resp.stage == "plan" and not resp.state.plan and resp.quick_replies):
+                        resp = agent.handle(resp.session_id, action=resp.quick_replies[0].action)
+                    elif resp.stage == "plan" and resp.state.plan:
+                        resp = agent.handle(resp.session_id, action={"type": "checkout"})
+                    else:
+                        resp = agent.handle(resp.session_id, message="давай любой вариант")
+            except Exception as e:      # падение = несработавший сценарий, но прогон продолжается
+                err = repr(e)
+            plan = resp.state.plan or {}
+            rows.append({
+                "id": q["id"], "booked": resp.stage == "booked", "turns": turns, "questions": questions,
+                "first_rec_s": round(first_rec, 3) if first_rec is not None else None,
+                "stitch_errors": sum(1 for i in plan.get("issues", []) if i["level"] == "error"),
+                "explained": bool(plan.get("hotel", {}).get("explanation", {}).get("why")),
+                "expect_fails": check(q["expect"], first, resp) if "expect" in q else None,
+                "error": err, "llm_turns": llm_turns,
+            })
+            if on_row:
+                on_row(rows[-1])
+    except KeyboardInterrupt:      # остановили (Ctrl+C или SIGTERM) — итог по тому, что успело посчитаться
+        interrupted = True
     recs = [r["first_rec_s"] for r in rows if r["first_rec_s"] is not None]
     planned = [r for r in rows if r["booked"]]
     checked = [r for r in rows if r["expect_fails"] is not None]
     summary = {
         "n": len(rows),
+        **({"interrupted": f"остановлен: посчитано {len(rows)} из {len(queries)}"} if interrupted else {}),
         "completion": round(len(planned) / len(rows), 2),
         "clarify_avg": round(statistics.mean(r["questions"] for r in rows), 2),
         "first_rec_s_median": round(statistics.median(recs), 3) if recs else None,
@@ -192,12 +200,17 @@ def run(offline: bool) -> dict:
     return {"summary": summary, "rows": rows}
 
 
+def print_row(r: dict) -> None:
+    """Строка печатается сразу: долгий прогон с LLM виден по ходу, а не только в конце."""
+    print(f"{'✓' if r['booked'] else '✗'} {r['id']:<22} ходов {r['turns']}  вопросов {r['questions']}  "
+          f"первая рек. {r['first_rec_s']}с  ошибок стыковки {r['stitch_errors']}" + (f"  ОШИБКА {r['error']}" if r["error"] else "")
+          + "".join(f"\n    ✗ {'нет в данных' if k == 'data' else 'не понял'}: {t}" for k, t in r["expect_fails"] or []),
+          flush=True)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--offline", action="store_true")
-    res = run(ap.parse_args().offline)
-    for r in res["rows"]:
-        print(f"{'✓' if r['booked'] else '✗'} {r['id']:<22} ходов {r['turns']}  вопросов {r['questions']}  "
-              f"первая рек. {r['first_rec_s']}с  ошибок стыковки {r['stitch_errors']}" + (f"  ОШИБКА {r['error']}" if r["error"] else "")
-              + "".join(f"\n    ✗ {'нет в данных' if k == 'data' else 'не понял'}: {t}" for k, t in r["expect_fails"] or []))
-    print("\nИТОГО:", json.dumps(res["summary"], ensure_ascii=False))
+    signal.signal(signal.SIGTERM, signal.default_int_handler)    # kill = Ctrl+C: итог по посчитанному
+    res = run(ap.parse_args().offline, on_row=print_row)
+    print("\nИТОГО:", json.dumps(res["summary"], ensure_ascii=False), flush=True)
