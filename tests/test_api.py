@@ -120,8 +120,14 @@ class LLMOutageMidSessionTest(unittest.TestCase):
             r = c.post("/api/chat", json={"message": PLAN_QUERY}).json()
             self.assertTrue(next(s["detail"] for s in r["trace"] if s["step"] == "understand").startswith("LLM"))
             client.chat.completions.create = down
-            with self.assertLogs("agent.llm", "WARNING") as logs:
-                r = c.post("/api/chat", json={"session_id": r["session_id"], "message": "с нами едет собака"})
+            import logging
+            muted = logging.root.manager.disable           # test_agent глушит предупреждения на весь прогон
+            logging.disable(logging.NOTSET)
+            try:
+                with self.assertLogs("agent.llm", "WARNING") as logs:
+                    r = c.post("/api/chat", json={"session_id": r["session_id"], "message": "с нами едет собака"})
+            finally:
+                logging.disable(muted)
             self.assertTrue(any("повтор" in m for m in logs.output))               # сначала переспросили
             self.assertEqual(r.status_code, 200)
             r = r.json()
