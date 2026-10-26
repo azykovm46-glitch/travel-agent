@@ -90,6 +90,13 @@ class Tracer:
         self._record(TraceStep(step=name, detail=detail))
 
 
+def _source(fresh: list[str], keys: tuple[str, ...]) -> str:
+    """Пометка в trace: результаты инструмента получены сейчас или взяты из кэша прошлого хода."""
+    if not fresh:
+        return " (из кэша, без нового поиска)"
+    return " (новый поиск)" if len(fresh) == len(keys) else f" (новый поиск: {', '.join(fresh)}; остальное из кэша)"
+
+
 def describe_request(s: TripState) -> str:
     parts = []
     if s.destination_hint and not s.selection.destination_id:
@@ -317,6 +324,9 @@ class TravelAgent:
             cur = getattr(state.selection, field)
             sel_id = ids[(ids.index(cur) + 1) % len(ids)] if cur in ids else ids[0]
         if sel_id:
+            if state.plan and sel_id != getattr(state.selection, field):
+                kept = [k for k in ("outbound", "return", "hotels", "transfers") if k in state.candidates]
+                tr.add("replan", f"изменилось: выбор ({kind}); переищу: ничего; сохранено: {', '.join(kept) or '—'}")
             setattr(state.selection, field, sel_id)
             if field not in state.selection.locked:
                 state.selection.locked.append(field)
@@ -348,7 +358,7 @@ class TravelAgent:
                     budget_per_night=None, travelers=state.travelers.total, nights=(end - start).days)
                 h["detail"] = f"найдено {len(state.candidates['destinations'])} направлений"
             else:
-                h["detail"] = "из кэша"
+                h["detail"] = f"{len(state.candidates['destinations'])} направлений (из кэша, без нового поиска)"
         ranked = score_destinations(state.candidates["destinations"], state)
         top = ranked[:3]
         state.candidates["destinations_top"] = top
@@ -422,15 +432,18 @@ class TravelAgent:
         start, end = state.resolved_dates(self.today)
         t = state.travelers
         with tr.step("search_transport") as h:
+            fresh = [key for key in ("outbound", "return") if key not in state.candidates]
             for key, day, direction in (("outbound", start, "out"), ("return", end, "back")):
-                if key not in state.candidates:
+                if key in fresh:
                     state.candidates[key] = be.search_transport(state.origin_city, dest["id"], day, t.total, direction)
-            h["detail"] = f"туда {len(state.candidates['outbound'])}, обратно {len(state.candidates['return'])} вариантов"
+            h["detail"] = f"туда {len(state.candidates['outbound'])}, обратно {len(state.candidates['return'])} вариантов" \
+                + _source(fresh, ("outbound", "return"))
         with tr.step("search_hotels") as h:
-            if "hotels" not in state.candidates:
+            fresh = [] if "hotels" in state.candidates else ["hotels"]
+            if fresh:
                 state.candidates["hotels"] = be.search_hotels(dest["id"], start, end, t.adults,
                                                               len(t.children_ages), t.pets)
-            h["detail"] = f"{len(state.candidates['hotels'])} отелей"
+            h["detail"] = f"{len(state.candidates['hotels'])} отелей" + _source(fresh, ("hotels",))
 
         with tr.step("score") as h:
             outs = score_transport(state.candidates["outbound"], state)

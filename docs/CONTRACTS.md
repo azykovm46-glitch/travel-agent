@@ -124,7 +124,8 @@ REST остаётся как был — WebSocket нужен только для
   (`{kind: "early_checkin", title, status: confirmed|on_request|requested|declined, status_text}`);
   `reminders` — `[{at: ISO, text}]` по времени: онлайн-регистрация, выезд в аэропорт, заселение,
   дедлайн бесплатной отмены, выезд из отеля. После повторного оформления — `previous_order_id`, `price_difference_rub`
-- `trace` — панель «Как агент думает» (шаги и время)
+- `trace` — панель «Как агент думает» (шаги и время). При пересборке шаг `replan`: «изменилось: …; переищу: …;
+  сохранено: …», а `search_transport` / `search_hotels` помечены «(новый поиск)» или «(из кэша, без нового поиска)»
 - `diff` — подсветка «было → стало» после пересборки; `field`: destination, dates, outbound, return, hotel, total
 
 ## 3. Метрики (роль A ↔ роль D)

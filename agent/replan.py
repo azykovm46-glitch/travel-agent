@@ -16,6 +16,7 @@ DEPS: dict[str, set[str]] = {
     "trip_type": {"destinations"},
     # только пересчёт ранжирования — кэш не трогаем
     "budget": set(), "constraints": set(), "must_have": set(), "weights": set(),
+    "location": set(),          # «ближе к морю»: граница по пляжу среди уже найденных отелей
 }
 # какие автоматические выборы сбросить при изменении группы
 RESELECT: dict[str, list[str]] = {
@@ -26,6 +27,7 @@ RESELECT: dict[str, list[str]] = {
     "budget": ["outbound_id", "return_id", "hotel_id"],
     "constraints": ["outbound_id", "return_id"],
     "must_have": ["hotel_id"],
+    "location": ["hotel_id"],
     "weights": ["outbound_id", "return_id", "hotel_id"],
     "trip_type": [],
 }

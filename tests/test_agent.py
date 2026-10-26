@@ -8,7 +8,7 @@ import functools
 import os
 import sys
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -436,6 +436,75 @@ class FlowTest(unittest.TestCase):
         a = new_agent()
         r = a.handle(message="люкс за 30 тысяч в Дубай вдвоём из Москвы в декабре")
         self.assertIn("люкс", r.message.lower())
+
+
+class ReplanTest(unittest.TestCase):
+    """Каждая фраза пересборки: что переискано, а что взято из кэша, видно в trace."""
+    BASE = "Анталья в ноябре вдвоём из Москвы на неделю"
+
+    def replan(self, phrase: str):
+        a = new_agent()
+        r = a.handle(message=self.BASE)
+        self.assertEqual(r.stage, "plan")
+        before = r.state.model_copy(deep=True)
+        r = a.handle(r.session_id, message=phrase)
+        self.assertEqual(r.stage, "plan")
+        trace = {}
+        for t in r.trace:
+            trace.setdefault(t.step, t.detail)
+        return before, r, trace
+
+    def test_pet_researches_hotels_and_transfers(self):
+        before, r, tr = self.replan("с нами едет собака")
+        self.assertIn("переищу: hotels, outbound, return, transfers", tr["replan"])
+        self.assertIn("новый поиск", tr["search_hotels"])
+        self.assertTrue(r.state.plan["hotel"]["pets_allowed"])
+
+    def test_direct_only_reuses_search(self):
+        before, r, tr = self.replan("без пересадок")
+        self.assertIn("переищу: ничего", tr["replan"])
+        self.assertIn("из кэша", tr["search_transport"])
+        self.assertIn("из кэша", tr["search_hotels"])
+        self.assertEqual(r.state.plan["outbound"]["stops"], 0)
+        self.assertEqual(r.state.plan["hotel"]["id"], before.plan["hotel"]["id"])     # отель сохранён
+
+    def test_closer_to_sea_changes_weights_not_search(self):
+        before, r, tr = self.replan("хочу отель ближе к морю")
+        self.assertIn("weights", tr["replan"])
+        self.assertIn("переищу: ничего", tr["replan"])
+        self.assertIn("из кэша", tr["search_hotels"])
+        self.assertGreater(r.state.weights.location, before.weights.location)
+        self.assertLess(r.state.plan["hotel"]["beach_m"], before.plan["hotel"]["beach_m"])
+        self.assertEqual(r.state.plan["outbound"]["id"], before.plan["outbound"]["id"])  # рейсы не тронуты
+
+    def test_other_hotel_keeps_flights(self):
+        before, r, tr = self.replan("давай другой отель")
+        self.assertIn("сохранено: outbound, return, hotels", tr["replan"])
+        self.assertIn("из кэша", tr["search_hotels"])
+        self.assertNotEqual(r.state.plan["hotel"]["id"], before.plan["hotel"]["id"])
+        self.assertEqual(r.state.plan["outbound"]["id"], before.plan["outbound"]["id"])
+
+    def test_other_destination_researches_everything_but_keeps_dates(self):
+        before, r, tr = self.replan("а в Шарм?")
+        self.assertIn("переищу: hotels, outbound, return, transfers", tr["replan"])
+        self.assertIn("новый поиск", tr["search_hotels"])
+        self.assertEqual(r.state.selection.destination_id, "sharm")
+        self.assertEqual(r.state.plan["check_in"], before.plan["check_in"])
+
+    def test_shift_dates_researches_transport_and_hotels(self):
+        before, r, tr = self.replan("на 2 дня позже")
+        self.assertIn("dates", tr["replan"])
+        self.assertIn("новый поиск", tr["search_transport"])
+        self.assertIn("новый поиск", tr["search_hotels"])
+        self.assertEqual(date.fromisoformat(r.state.plan["check_in"]),
+                         date.fromisoformat(before.plan["check_in"]) + timedelta(days=2))
+
+    def test_smaller_budget_reranks_cached_options(self):
+        before, r, tr = self.replan("бюджет меньше")
+        self.assertIn("переищу: ничего", tr["replan"])
+        self.assertIn("из кэша", tr["search_hotels"])
+        self.assertLess(r.state.budget.total_rub, before.plan["total_rub"])           # от суммы текущего плана
+        self.assertLessEqual(r.state.plan["total_rub"], before.plan["total_rub"])
 
 
 class MemoryTest(unittest.TestCase):

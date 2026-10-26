@@ -365,7 +365,7 @@ def apply_patch(state: TripState, p: dict) -> set[str]:
         from tools.scoring import hotel_filters      # здесь, чтобы не тянуть скоринг в импорт модуля
         if any((h.get("beach_m") or cur) < cur and not hotel_filters(h, state)
                for h in state.candidates.get("hotels", [])):
-            setf("must_have", state.constraints, "max_beach_m", cur - 1)
+            setf("location", state.constraints, "max_beach_m", cur - 1)
         else:
             p["near_unavailable"] = cur              # planner честно скажет, что ближе нет
     return changed
