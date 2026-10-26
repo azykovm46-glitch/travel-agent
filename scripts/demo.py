@@ -6,6 +6,8 @@
     python scripts/demo.py --only 2                # один сценарий
 
 Каждый шаг проверяет ожидаемый этап (stage). Код выхода 1, если что-то пошло не так.
+Шаг OUTAGE роняет LLM посреди сценария (клиент отвечает 503): дальше агент обязан идти на правилах —
+это проверяется по trace. С --url отключить LLM на чужом сервере нельзя, шаг пропускается.
 """
 from __future__ import annotations
 
@@ -19,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 FIRST = {"pick": 0}          # нажать первую быструю кнопку из предыдущего ответа
+OUTAGE = {"llm_outage": True}   # провайдер LLM упал посреди разговора
 
 SCENARIOS = [
     ("Семья к тёплому морю: один запрос → бронь → пересборка → ранний заезд", [
@@ -27,6 +30,8 @@ SCENARIOS = [
         ("а если на 2 дня позже и бюджет меньше на 20%", "plan"),
         ({"type": "checkout"}, "booked"),
         ("можно заселиться пораньше?", "booked"),
+        ("нужен трансфер до отеля", "booked"),
+        (FIRST, "booked"),
     ]),
     ("Горнолыжка: правильные направления, длинный трансфер без ошибок стыковки", [
         ("в горы на лыжах в феврале вдвоём из Москвы", "inspire"),
@@ -34,9 +39,10 @@ SCENARIOS = [
         ("давай другой отель", "plan"),
         ({"type": "checkout"}, "booked"),
     ]),
-    ("Пересборка без поиска с нуля: собака, без пересадок, ближе к морю", [
+    ("Пересборка без поиска с нуля: собака, без пересадок, ближе к морю; посреди — LLM падает", [
         ("Сочи на неделю в ноябре вдвоём из Москвы", "plan"),
         ("с нами едет собака", "plan"),
+        (OUTAGE, None),
         ("а можно без пересадок?", "plan"),
         ("хочу отель ближе к морю", "plan"),
         ({"type": "checkout"}, "booked"),
@@ -68,10 +74,38 @@ def make_client(url: str | None, llm: bool):
     return TestClient(app)
 
 
+class _ProviderDown:
+    """Клиент OpenAI, который на всё отвечает 503 — как Polza во время сбоя."""
+
+    class Error(Exception):
+        status_code = 503
+
+    def __init__(self) -> None:
+        from types import SimpleNamespace
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+    def create(self, **kw):
+        raise self.Error("503 SERVICE_UNAVAILABLE (симуляция сбоя провайдера)")
+
+
+def drop_llm(client) -> str:
+    if not hasattr(client, "app"):
+        return "через --url LLM на сервере не отключить — шаг пропущен"
+    from api.main import agent
+    if not agent.llm.enabled:
+        return "LLM и так выключена (офлайн) — дальше всё равно правила"
+    agent.llm._client, agent.llm.retry_pause = _ProviderDown(), 0
+    return "провайдер LLM отвечает 503 — дальше агент должен работать на правилах"
+
+
 def run_scenario(client, title: str, steps: list) -> bool:
     print(f"\n\033[1m=== {title}\033[0m")
-    sid, last, ok = None, None, True
+    sid, last, ok, down = None, None, True, False
     for what, expected in steps:
+        if what is OUTAGE:
+            print(f"> [сбой] {drop_llm(client)}")
+            down = True
+            continue
         body = {"session_id": sid}
         if isinstance(what, str):
             body["message"] = what
@@ -94,6 +128,11 @@ def run_scenario(client, title: str, steps: list) -> bool:
         mark = "✓" if last["stage"] == expected else f"✗ ждали {expected}"
         ok &= last["stage"] == expected
         print(f"> {shown}\n  {mark} [{last['stage']}] {ms} мс: {last['message']}")
+        source = next((s["detail"] for s in last["trace"] if s["step"] == "understand"), "")
+        if down and source:
+            rules = not source.startswith("LLM")
+            ok &= rules
+            print(f"    {'✓' if rules else '✗'} разбор после сбоя: {source[:80]}")
         for d in last["diff"]:
             print(f"    Δ {d['label']}: {d['before']} → {d['after']}")
         issues = next((c["data"]["items"] for c in last["cards"] if c["type"] == "issues"), [])

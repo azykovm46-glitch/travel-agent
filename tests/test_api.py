@@ -92,5 +92,44 @@ class WebSocketTest(unittest.TestCase):
             self.assertEqual(receive_turn(ws)[-1]["type"], "response")
 
 
+class LLMOutageMidSessionTest(unittest.TestCase):
+    """LLM отвечала, потом провайдер упал (503) — разговор продолжается на правилах, без ошибки API."""
+
+    def test_session_survives_provider_outage(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        from api import main
+
+        class Down(Exception):
+            status_code = 503
+
+        def answer(**kw):
+            if "tools" in kw:
+                call = SimpleNamespace(function=SimpleNamespace(arguments='{"intent": "plan"}'))
+                return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=[call], content=None))])
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(tool_calls=None, content="Готово."))])
+
+        def down(**kw):
+            raise Down("503 SERVICE_UNAVAILABLE")
+
+        llm = main.agent.llm
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=answer)))
+        with mock.patch.multiple(llm, enabled=True, model="fake", fallback_model="", reasoning_effort="",
+                                 mode="tools", retry_pause=0, _down_until=0.0, _client=client):
+            c = TestClient(app)
+            r = c.post("/api/chat", json={"message": PLAN_QUERY}).json()
+            self.assertTrue(next(s["detail"] for s in r["trace"] if s["step"] == "understand").startswith("LLM"))
+            client.chat.completions.create = down
+            with self.assertLogs("agent.llm", "WARNING") as logs:
+                r = c.post("/api/chat", json={"session_id": r["session_id"], "message": "с нами едет собака"})
+            self.assertTrue(any("повтор" in m for m in logs.output))               # сначала переспросили
+            self.assertEqual(r.status_code, 200)
+            r = r.json()
+            self.assertTrue(r["state"]["plan"]["hotel"]["pets_allowed"])          # правила поняли собаку
+            understand = next(s["detail"] for s in r["trace"] if s["step"] == "understand")
+            self.assertFalse(understand.startswith("LLM"))
+            self.assertIn("503", understand)                                      # в trace видна причина
+
+
 if __name__ == "__main__":
     unittest.main()
