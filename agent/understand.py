@@ -192,6 +192,8 @@ def rule_patch(message: str, state: TripState, today: date | None = None) -> dic
         p["intent"] = "early_checkin"
     elif state.order and re.search(r"напомина|напомни|что когда|расписани", t):
         p["intent"] = "reminders"
+    elif state.order and re.search(r"трансфер|такси до отеля|добраться до отеля", t):
+        p["intent"] = "transfer"
     elif re.search(r"оформ|бронир|оплат|покупа|\bбер(у|ем)\b все|готов купить", t):
         p["intent"] = "checkout"
     elif state.plan and re.search(r"друг(ой|ие|ую) (отел|гостиниц)|(отел\w*|гостиниц\w*) (не нравит|друг)|смени\w* отел", t):

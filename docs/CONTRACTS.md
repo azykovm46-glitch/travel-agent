@@ -65,8 +65,11 @@
 | `set_weights` | `weights: {price, travel_time, location, rating, cancellation, meals}` | ползунки в панели логики |
 | `remove_assumption` | `field` | крестик на допущении (в т.ч. `profile_*` — забыть значение из профиля) |
 | `change_destination` | — | «Другие направления»: сбросить выбранное место, снова подбор |
-| `request_early_checkin` | — | после брони: запросить ранний заезд |
+| `request_early_checkin` | — | после брони: запросить ранний заезд (ответ отеля — в `order.services`) |
 | `reminders` | — | после брони: показать напоминания текстом |
+| `change_dates` | `shift_days` или `start` (YYYY-MM-DD) + `nights` / `end` | смена дат; после брони план с `plan.rebook` |
+| `transfer_options` | — | после брони: варианты трансфера до купленного отеля (карточка `comparison`, `kind: transfer`) |
+| `select_transfer` | `id` (из `transfer_options`) | после брони: заменить трансфер до отеля, разница в цене — сразу |
 | `update` | `patch` — любые поля патча (см. `agent/prompts.py`) | ручная правка условий |
 
 Например, `{"type": "update", "patch": {"prefer": "location", "near": "beach"}}` — «ближе к морю»: пересортировка
@@ -124,7 +127,12 @@ REST остаётся как был — WebSocket нужен только для
 - `order` — номер брони, корзина, сумма; `services` — доп. услуги со статусом
   (`{kind: "early_checkin", title, status: confirmed|on_request|requested|declined, status_text}`);
   `reminders` — `[{at: ISO, text}]` по времени: онлайн-регистрация, выезд в аэропорт, заселение,
-  дедлайн бесплатной отмены, выезд из отеля. После повторного оформления — `previous_order_id`, `price_difference_rub`
+  дедлайн бесплатной отмены, выезд из отеля. После повторного оформления — `previous_order_id`, `price_difference_rub`.
+  Замена трансфера — услуга `{kind: "transfer", title, status: "confirmed", status_text, price_difference_rub}`,
+  `paid_rub` и `cart` обновляются, напоминания пересчитываются; номер брони тот же
+- `plan.rebook` — если план пересобран после брони: `{previous_order_id, price_difference_rub}` (плюс — доплата,
+  минус — вернём); первая кнопка — «Переоформить: доплата N ₽ / вернём N ₽»
+- `comparison` с `kind: transfer` — варианты трансфера: `kind` (taxi/shuttle/public), `minutes`, `price_rub`, `selected`
 - `trace` — панель «Как агент думает» (шаги и время). При пересборке шаг `replan`: «изменилось: …; переищу: …;
   сохранено: …», а `search_transport` / `search_hotels` помечены «(новый поиск)» или «(из кэша, без нового поиска)»
 - `diff` — подсветка «было → стало» после пересборки; `field`: destination, dates, outbound, return, hotel, total

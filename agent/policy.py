@@ -73,7 +73,7 @@ def apply_defaults(state: TripState, today: date | None = None) -> None:
 
 def next_step(state: TripState, intent: str) -> str:
     if state.stage == "booked":
-        return intent if intent in ("early_checkin", "reminders") else "booked"
+        return intent if intent in ("early_checkin", "reminders", "transfer", "select_transfer") else "booked"
     if intent == "checkout" and state.plan:
         return "checkout"
     if intent == "select":

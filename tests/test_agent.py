@@ -507,6 +507,69 @@ class ReplanTest(unittest.TestCase):
         self.assertLessEqual(r.state.plan["total_rub"], before.plan["total_rub"])
 
 
+class AfterBookingTest(unittest.TestCase):
+    def booked(self, text="Сочи в ноябре вдвоём из Москвы"):
+        a = new_agent()
+        r = a.handle(message=text)
+        r = a.handle(r.session_id, action={"type": "checkout"})
+        self.assertEqual(r.stage, "booked")
+        return a, r
+
+    @on_mock
+    def test_early_checkin_gets_hotel_answer(self):
+        a, r = self.booked()
+        r = a.handle(r.session_id, action={"type": "request_early_checkin"})
+        svc = r.state.order["services"][0]
+        self.assertIn(svc["status"], ("confirmed", "on_request", "declined"))   # ответил мок отеля, не заглушка
+        self.assertIn(r.state.plan["hotel"]["name"], r.message)
+        self.assertTrue(any(t.step == "early_checkin" for t in r.trace))
+
+    def test_change_dates_shows_difference_with_paid_order(self):
+        a, r = self.booked()
+        paid, order_id = r.state.order["paid_rub"], r.state.order["order_id"]
+        r = a.handle(r.session_id, action={"type": "change_dates", "shift_days": 2})
+        self.assertEqual(r.stage, "plan")
+        diff = r.state.plan["total_rub"] - paid
+        self.assertEqual(r.state.plan["rebook"], {"previous_order_id": order_id, "price_difference_rub": diff})
+        self.assertIn(order_id, r.message)
+        self.assertTrue(r.quick_replies[0].label.startswith("Переоформить"))
+        r = a.handle(r.session_id, action=r.quick_replies[0].action)
+        self.assertEqual(r.state.order["previous_order_id"], order_id)
+        self.assertEqual(r.state.order["price_difference_rub"], diff)
+
+    def test_change_dates_to_exact_start(self):
+        a, r = self.booked()
+        r = a.handle(r.session_id, action={"type": "change_dates", "start": "2026-11-20", "nights": 5})
+        self.assertEqual((r.state.plan["check_in"], r.state.plan["check_out"]), ("2026-11-20", "2026-11-25"))
+
+    def test_transfer_to_booked_hotel(self):
+        a, r = self.booked()
+        old = r.state.plan["transfer_in"]
+        paid = r.state.order["paid_rub"]
+        r = a.handle(r.session_id, message="нужен трансфер до отеля")
+        self.assertEqual(r.stage, "booked")
+        card = next(c.data for c in r.cards if c.type == "comparison")
+        self.assertEqual(card["kind"], "transfer")
+        self.assertTrue(all(x["to"] == f"hotel:{r.state.plan['hotel']['id']}" for x in card["items"]))
+        other = next(q.action for q in r.quick_replies if q.action and q.action.get("type") == "select_transfer")
+        r = a.handle(r.session_id, action=other)
+        new = r.state.plan["transfer_in"]
+        self.assertNotEqual(new["id"], old["id"])
+        svc = next(s for s in r.state.order["services"] if s["kind"] == "transfer")
+        self.assertEqual(svc["status"], "confirmed")
+        self.assertEqual(svc["price_difference_rub"], new["price_rub"] - old["price_rub"])
+        self.assertEqual(r.state.order["paid_rub"], paid + svc["price_difference_rub"])
+        self.assertEqual(r.state.plan["total_rub"], r.state.order["paid_rub"])
+        self.assertIn(new["id"], [i["id"] for i in r.state.order["cart"]["items"]])
+
+    def test_transfer_with_pet_offers_only_pet_friendly(self):
+        a, r = self.booked("Сочи в ноябре вдвоём из Москвы с собакой")
+        r = a.handle(r.session_id, action={"type": "transfer_options"})
+        card = next(c.data for c in r.cards if c.type == "comparison")
+        self.assertTrue(card["items"])
+        self.assertTrue(all(x.get("pets_ok", True) for x in card["items"]))
+
+
 class MemoryTest(unittest.TestCase):
     def setUp(self):
         self.store = ProfileStore(Path(tempfile.mkdtemp()) / "profiles.sqlite3")

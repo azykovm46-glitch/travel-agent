@@ -25,7 +25,8 @@ EXTRACT_SYSTEM = """Ты — модуль понимания запросов в
   заполни intent = select, select_index (с 1) или destination_name, и select_kind.
 - «давай другой отель», «отель не нравится» -> intent = select, select_kind hotel, select_other true.
 - «оформляем», «бронируй», «оплачиваю» -> intent = checkout.
-- После брони: «можно заселиться пораньше?» -> intent = early_checkin; «напомни, что когда» -> intent = reminders.
+- После брони: «можно заселиться пораньше?» -> intent = early_checkin; «напомни, что когда» -> intent = reminders;
+  «нужен трансфер до отеля» -> intent = transfer.
 - Вопрос не о поездке («какая погода на Марсе?») -> intent = other, остальные поля не заполняй.
 - Иначе intent = plan (новый запрос или уточнение) или change (изменение условий готового плана).
 """
@@ -58,7 +59,7 @@ UPDATE_TRIP_STATE_TOOL = {
         "parameters": {
             "type": "object",
             "properties": {
-                "intent": {"type": "string", "enum": ["plan", "change", "select", "checkout", "early_checkin", "reminders", "question", "other"]},
+                "intent": {"type": "string", "enum": ["plan", "change", "select", "checkout", "early_checkin", "reminders", "transfer", "question", "other"]},
                 "origin_city": {"type": "string", "description": "Город отправления, именительный падеж"},
                 "destination_name": {"type": "string", "description": "Конкретное место, если названо"},
                 "destination_hint": {"type": "string", "description": "Размытое пожелание: «к тёплому морю», «в горы»"},

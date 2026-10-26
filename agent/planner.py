@@ -17,7 +17,7 @@ from datetime import date, datetime, timedelta
 
 from agent import policy
 from agent.places import lookup_place, tags_label
-from agent.after_booking import build_reminders, request_early_checkin
+from agent.after_booking import TRANSFER_NAME, build_reminders, request_early_checkin
 from agent.explain import (_rub, explain_destination, explain_hotel, explain_transport, MEAL_NAME,
                            unsupported_numbers)
 from agent.llm import LLM
@@ -236,6 +236,10 @@ class TravelAgent:
             return self._early_checkin(sid, state, tr)
         if step == "reminders":
             return self._reminders(sid, state, tr)
+        if step == "transfer":
+            return self._transfer_options(sid, state, tr)
+        if step == "select_transfer":
+            return self._select_transfer(sid, state, tr, patch.get("select_id"))
         policy.apply_defaults(state, today)
         infer_hidden(state)
         if step == "inspire":
@@ -274,6 +278,13 @@ class TravelAgent:
             p["intent"] = "plan"
         elif kind in ("request_early_checkin", "reminders"):
             p["intent"] = "early_checkin" if kind == "request_early_checkin" else "reminders"
+        elif kind == "transfer_options":
+            p["intent"] = "transfer"
+        elif kind == "select_transfer":
+            p.update({"intent": "select_transfer", "select_id": action["id"]})
+        elif kind == "change_dates":                # после брони — пересборка с разницей к оплаченному
+            p.update({k: action[k] for k in ("shift_days", "start", "end", "nights") if k in action})
+            p["intent"] = "change"
         elif kind == "set_weights":
             for k, v in action.get("weights", {}).items():
                 if hasattr(state.weights, k):
@@ -567,9 +578,15 @@ class TravelAgent:
         cards.append(self._assumptions_card(state))
 
         errors = [i for i in plan["issues"] if i["level"] == "error"]
+        rebook = ""
+        if state.order:                               # уже оплачено — показываем разницу до переоформления
+            d = total - state.order["paid_rub"]
+            plan["rebook"] = {"previous_order_id": state.order["order_id"], "price_difference_rub": d}
+            rebook = f"доплата {_rub(d)}" if d > 0 else f"вернём {_rub(-d)}" if d < 0 else "без доплаты"
         qr = []
         if not errors:
-            qr.append(QuickReply(label=f"Оформить за {_rub(total)}", action={"type": "checkout"}))
+            qr.append(QuickReply(label=f"Переоформить: {rebook}" if rebook else f"Оформить за {_rub(total)}",
+                                 action={"type": "checkout"}))
         qr += [QuickReply(label=f"Отель: {x['name']}", action={"type": "select_hotel", "id": x["id"]})
                for x in hotels[:3] if x["id"] != hotel["id"]]
         qr += [QuickReply(label="На 2 дня позже", text="а если на 2 дня позже?"),
@@ -590,6 +607,8 @@ class TravelAgent:
             + (f" Внимание: {warn['message']}" + (f" — предлагаю {warn['fix']}." if warn.get('fix') else ".") if warn else ""))
         if conflict:                                  # как и с лыжами: оговорка не зависит от LLM
             msg = f"{conflict} {msg}"
+        if rebook:
+            msg += f" По сравнению с оплаченной бронью {state.order['order_id']}: {rebook}."
         return AgentResponse(session_id=sid, stage=state.stage, message=msg, cards=cards, quick_replies=qr,
                              diff=diff, trace=tr.steps, state=state)
 
@@ -627,7 +646,7 @@ class TravelAgent:
         return AgentResponse(
             session_id=sid, stage=state.stage, trace=tr.steps, state=state,
             message=f"Готово! Поездка оформлена, номер брони {order['order_id']} (оплата имитирована).{diff_note} "
-                    f"Могу запросить ранний заезд, поменять даты или напомнить о вылете.",
+                    f"Могу запросить ранний заезд, заменить трансфер до отеля, поменять даты или напомнить о вылете.",
             cards=[Card(type="order", data=state.order)], quick_replies=self._booked_replies(state))
 
     def _booked(self, sid: str, state: TripState, tr: Tracer) -> AgentResponse:
@@ -660,13 +679,68 @@ class TravelAgent:
                              message=f"Напомню: {lines}. Полный список — в карточке заказа.",
                              cards=[Card(type="order", data=state.order)], quick_replies=self._booked_replies(state))
 
+    def _transfer_options(self, sid: str, state: TripState, tr: Tracer) -> AgentResponse:
+        """Трансфер к купленному отелю: варианты от аэропорта/вокзала, текущий отмечен."""
+        plan, t = state.plan, state.travelers
+        out, hotel, cur = plan["outbound"], plan["hotel"], plan["transfer_in"]
+        point = "station" if out["mode"] == "train" else "airport"
+        with tr.step("search_transfers") as h:
+            opts = get_backend().search_transfers(plan["destination"]["id"], point, f"hotel:{hotel['id']}",
+                                                  out["arrival"], t.total, t.pets)
+            state.candidates["transfer_options"] = opts
+            h["detail"] = f"{len(opts)} вариантов до «{hotel['name']}»"
+        items = [{**o, "selected": o["id"] == cur["id"]} for o in opts]
+        qr = [QuickReply(label=f"{TRANSFER_NAME.get(o['kind'], o['kind']).capitalize()}: ~{o['minutes']} мин, {_rub(o['price_rub'])}",
+                         action={"type": "select_transfer", "id": o["id"]}) for o in opts if o["id"] != cur["id"]]
+        msg = (f"До «{hotel['name']}» в заказе — {TRANSFER_NAME.get(cur['kind'], cur['kind'])}, ~{cur['minutes']} мин, "
+               f"{_rub(cur['price_rub'])}. Можно заменить — разницу в цене покажу сразу.")
+        return AgentResponse(session_id=sid, stage=state.stage, trace=tr.steps, state=state, message=msg,
+                             cards=[Card(type="comparison", data={"kind": "transfer", "items": items}),
+                                    Card(type="order", data=state.order)],
+                             quick_replies=qr + self._booked_replies(state))
+
+    def _select_transfer(self, sid: str, state: TripState, tr: Tracer, sel_id: str | None) -> AgentResponse:
+        plan, order = state.plan, state.order
+        old = plan["transfer_in"]
+        new = next((o for o in state.candidates.get("transfer_options", []) if o["id"] == sel_id), None)
+        if not new or new["id"] == old["id"]:
+            return self._transfer_options(sid, state, tr)
+        trial = {**plan, "transfer_in": new}
+        issues = validate_plan(trial, state.travelers.total, state.travelers.pets, state.budget.total_rub)
+        bad = [i for i in issues if i["level"] == "error"]
+        if bad:
+            tr.add("validate", ", ".join(f"error:{i['code']}" for i in bad))
+            resp = self._transfer_options(sid, state, tr)
+            resp.message = f"Этот трансфер не подходит: {bad[0]['message']}. " + resp.message
+            return resp
+        d = new["price_rub"] - old["price_rub"]
+        plan.update({"transfer_in": new, "issues": issues, "total_rub": plan["total_rub"] + d})
+        plan["price_breakdown"] = {**plan.get("price_breakdown", {}),
+                                   "transfers": new["price_rub"] + plan["transfer_out"]["price_rub"]}
+        state.selection.transfer_in_id = new["id"]
+        cart = order["cart"]
+        items = [{**i, "id": new["id"], "price_rub": new["price_rub"]} if i["id"] == old["id"] else i for i in cart["items"]]
+        name = TRANSFER_NAME.get(new["kind"], new["kind"])
+        service = {"kind": "transfer", "title": f"Трансфер до отеля: {name}", "status": "confirmed",
+                   "status_text": "подтверждён", "price_difference_rub": d}
+        state.order = {**order, "cart": {**cart, "items": items, "total_rub": cart["total_rub"] + d},
+                       "paid_rub": order["paid_rub"] + d, "reminders": build_reminders(plan),
+                       "services": [s for s in order.get("services", []) if s["kind"] != "transfer"] + [service]}
+        tr.add("transfer", f"{old['kind']} → {new['kind']}, разница {d:+} ₽")
+        money = f"доплата {_rub(d)}" if d > 0 else f"вернём {_rub(-d)}" if d < 0 else "цена не изменилась"
+        msg = (f"Заменил трансфер до «{plan['hotel']['name']}»: {name}, ~{new['minutes']} мин; {money}. "
+               f"Бронь {order['order_id']} осталась прежней, напоминания обновил.")
+        return AgentResponse(session_id=sid, stage=state.stage, trace=tr.steps, state=state, message=msg,
+                             cards=[Card(type="order", data=state.order)], quick_replies=self._booked_replies(state))
+
     @staticmethod
     def _booked_replies(state: TripState) -> list[QuickReply]:
         qr = []
         if not any(s["kind"] == "early_checkin" for s in state.order.get("services", [])):
             qr.append(QuickReply(label="Запросить ранний заезд", action={"type": "request_early_checkin"}))
-        return qr + [QuickReply(label="Напоминания", text="напомни, что когда"),
-                     QuickReply(label="На 2 дня позже", text="а если на 2 дня позже?")]
+        return qr + [QuickReply(label="Трансфер до отеля", action={"type": "transfer_options"}),
+                     QuickReply(label="Напоминания", text="напомни, что когда"),
+                     QuickReply(label="На 2 дня позже", action={"type": "change_dates", "shift_days": 2})]
 
     # ------------------------------------------------------------- утилиты
     @staticmethod
