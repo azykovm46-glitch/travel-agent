@@ -65,11 +65,12 @@ uvicorn api.main:app --reload --port 8000      # документация на /
 ## Проверка
 ```bash
 python -m unittest discover -s tests -v   # 57 тестов, без сети и LLM
-python evals/run.py --offline             # метрики на 24 запросах
+python evals/run.py --offline             # метрики на 50 запросах
 python scripts/demo.py                    # 5 демо-сценариев через API
 ```
-Сейчас офлайн: completion 1.0, correct 1.0, ошибок стыковки 0, в среднем 0.5 уточняющих вопроса.
 `correct` проверяет не только «дошёл до брони», но и «понял правильно» (поле `expect` в `evals/queries.jsonl`).
+Актуальные метрики, методика и найденные уязвимости — в [`docs/metrics.md`](docs/metrics.md)
+и [`docs/qa_findings.md`](docs/qa_findings.md) (пересобираются командами выше).
 
 ## Структура
 | Путь | Что там |
