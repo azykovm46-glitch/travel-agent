@@ -52,7 +52,9 @@ uvicorn api.main:app --reload --port 8000  # API для фронтенда
 
 ## Правила работы
 - После любого изменения логики: `python -m unittest discover -s tests` и `python evals/run.py --offline`.
-  Метрики не должны ухудшаться (сейчас на 24 запросах: completion 1.0, stitch_err 0, correct 1.0; с LLM — то же, плюс llm_understand ≥ 0.9).
+  Метрики не должны ухудшаться (сейчас на 50 запросах офлайн: мок — completion 1.0, correct 1.0, stitch_err 0;
+  реальный бэкенд — completion 1.0, understood 1.0, in_data 0.75; с LLM — плюс llm_understand ≥ 0.9).
+  Проверяй оба бэкенда: `TOOLS_BACKEND=tools.real_backend`, при запуске не из репозитория — `HACKATHON_BACKEND_DIR`.
   Новый сложный запрос в evals — сразу с полем `expect`, иначе он проверяет только «дошёл до брони».
 - Новое поведение — сначала тест в `tests/test_agent.py`, потом код.
 - Контракты с командой — `docs/CONTRACTS.md`. Меняешь формат ответа или инструмента — обнови файл
