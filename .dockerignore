@@ -1,0 +1,16 @@
+# секреты и локальное состояние в образ не попадают
+.env
+.env.*
+!.env.example
+*.sqlite3
+*.db
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+.github/
+.idea/
+.vscode/
+.DS_Store
+docs/screenshots/

@@ -1,0 +1,28 @@
+# Render Blueprint: New → Blueprint → этот репозиторий. Секреты (LLM_API_KEY…) вписать в Environment.
+services:
+  - type: web
+    name: travel-agent
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: AGENT_OFFLINE
+        value: "0"
+      - key: TOOLS_BACKEND
+        value: tools.mock_backend
+      - key: LLM_BASE_URL
+        value: https://polza.ai/api/v1
+      - key: LLM_MODEL
+        value: deepseek/deepseek-v4-flash
+      - key: LLM_REASONING_EFFORT
+        value: none
+      - key: LLM_TIMEOUT
+        value: "12"
+      - key: LLM_API_KEY
+        sync: false
+      - key: LLM_FALLBACK_MODEL
+        sync: false
+      - key: LLM_FALLBACK_BASE_URL
+        sync: false
+      - key: LLM_FALLBACK_API_KEY
+        sync: false

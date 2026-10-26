@@ -1,0 +1,30 @@
+# Собрать образ, убедиться, что .env в него не попал, и проверить /api/health в контейнере
+name: docker
+on:
+  push:
+    branches: [main, deploy]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Подложить .env с фальшивым ключом — он не должен попасть в образ
+        run: echo "LLM_API_KEY=ci-fake-secret" > .env
+      - name: Собрать образ
+        run: docker build -t travel-agent .
+      - name: В образе нет .env и секрета
+        run: |
+          docker run --rm travel-agent sh -c 'test ! -e /app/.env && ! grep -rqs ci-fake-secret /app'
+      - name: Контейнер отвечает
+        run: |
+          docker run -d --name agent -p 8000:8000 -e AGENT_OFFLINE=1 travel-agent
+          for i in $(seq 1 30); do curl -fs localhost:8000/api/health && break; sleep 1; done
+          curl -fs localhost:8000/api/health | grep -q '"ok":true'
+          curl -fs localhost:8000/ | grep -q 'О!дин запрос'
+          curl -fs -X POST localhost:8000/api/chat -H 'Content-Type: application/json' \
+            -d '{"message": "Сочи в ноябре вдвоём из Москвы"}' | grep -q '"stage":"plan"'
+      - name: Логи контейнера
+        if: always()
+        run: docker logs agent || true
