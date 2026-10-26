@@ -40,6 +40,15 @@ class RestTest(unittest.TestCase):
         self.assertEqual(TestClient(app).post("/api/chat", json={}).status_code, 400)
 
 
+class WebUiTest(unittest.TestCase):
+    def test_index_page_is_served_at_root(self):
+        r = TestClient(app).get("/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/html", r.headers["content-type"])
+        self.assertIn("<title>О!дин запрос</title>", r.text)
+        self.assertIn("/api/chat/ws", r.text)                          # шаги агента — через WebSocket
+
+
 class MemoryApiTest(unittest.TestCase):
     def test_profile_from_previous_booking_skips_questions(self):
         c = TestClient(app)

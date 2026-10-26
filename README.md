@@ -60,6 +60,9 @@ LLM понимает и пишет текст; цены, время и стык�
 ```bash
 uvicorn api.main:app --reload --port 8000      # документация на /docs
 ```
+- `GET /` — запасной веб-интерфейс (`static/index.html`, без сборки): чат, кнопки, карточки направлений и плана,
+  светофор стыковок, допущения с крестиком, шаги агента по WebSocket; работает и на телефоне.
+  Скриншоты демо-сценария — [`docs/screenshots/`](docs/screenshots/)
 - `POST /api/chat` — `{session_id?, message? | action?, user_id?}` → `AgentResponse` (карточки, кнопки, diff, trace)
 - `WS /api/chat/ws` — то же, но шаги агента приходят по мере работы («ищу отели…») для панели «Как агент думает»
 - `GET /api/health` — включена ли LLM и в каком режиме

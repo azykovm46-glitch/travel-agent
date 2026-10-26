@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>О!дин запрос</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --ink: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --accent: #2f5bea; --accent-ink: #ffffff; --user: #2f5bea; --user-ink: #ffffff;
+    --ok: #1f9d55; --warn: #d98a00; --err: #d64545; --info: #8a94a6;
+    --chip: #eef1f6; --diff: #fff7e0; --radius: 12px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1b1f27; --ink: #e8ebf1; --muted: #9aa3b2; --line: #2b313c;
+      --accent: #6d8cff; --accent-ink: #0d1020; --user: #3a5bd9; --user-ink: #ffffff;
+      --chip: #262c37; --diff: #2e2a1c;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; margin: 0; }
+  header .status { font-size: 12px; color: var(--muted); }
+  header button { margin-left: auto; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; height: calc(100% - 53px); }
+  .chat { display: flex; flex-direction: column; min-height: 0; }
+  #log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .msg { max-width: 760px; }
+  .msg.user { align-self: flex-end; background: var(--user); color: var(--user-ink); padding: 8px 12px; border-radius: var(--radius) var(--radius) 4px var(--radius); }
+  .msg.agent .bubble { background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; border-radius: var(--radius) var(--radius) var(--radius) 4px; white-space: pre-wrap; }
+  .msg.agent.error .bubble { border-color: var(--err); }
+  .cards { display: grid; gap: 10px; margin-top: 8px; }
+  .dests { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+  .card h3 { margin: 0 0 4px; font-size: 16px; }
+  .card .sub { color: var(--muted); font-size: 13px; }
+  .card ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+  .card li.minus { color: var(--muted); }
+  .card li.risk { color: var(--warn); }
+  .price { font-weight: 600; font-size: 16px; margin-top: 6px; }
+  .timeline { list-style: none; padding: 0; margin: 8px 0; }
+  .timeline li { display: grid; grid-template-columns: 92px 1fr; gap: 8px; padding: 4px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+  .timeline li:last-child { border-bottom: 0; }
+  .timeline .when { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .issues { list-style: none; padding: 0; margin: 8px 0 0; }
+  .issues li { display: flex; gap: 8px; align-items: baseline; font-size: 14px; padding: 2px 0; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; display: inline-block; transform: translateY(1px); }
+  .dot.error { background: var(--err); } .dot.warning { background: var(--warn); } .dot.info { background: var(--info); } .dot.ok { background: var(--ok); }
+  .issues .fix { color: var(--muted); }
+  .diff { background: var(--diff); border-radius: 8px; padding: 6px 10px; font-size: 14px; margin-top: 8px; }
+  .diff b { font-weight: 600; }
+  .compare { font-size: 13px; }
+  .compare .row { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .compare .row:last-child { border-bottom: 0; }
+  .compare .sel { font-weight: 600; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .question { margin-top: 8px; }
+  .question .q { font-size: 14px; color: var(--muted); }
+  form { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
+  form input { flex: 1; min-width: 0; font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--bg); color: var(--ink); }
+  aside { border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; padding: 12px 16px; }
+  aside h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+  aside h2:first-child { margin-top: 0; }
+  #steps { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+  #steps li { padding: 4px 0; border-bottom: 1px solid var(--line); }
+  #steps li .ms { color: var(--muted); float: right; }
+  #steps li.running { color: var(--accent); }
+  #steps li .detail { color: var(--muted); display: block; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: var(--chip); border-radius: 999px; padding: 3px 4px 3px 10px; font-size: 13px; display: inline-flex; align-items: center; gap: 4px; }
+  .chip.profile { outline: 1px dashed var(--accent); }
+  .chip button { border: 0; background: transparent; padding: 0 6px; border-radius: 50%; color: var(--muted); }
+  .empty { color: var(--muted); font-size: 13px; }
+  .typing { color: var(--muted); font-size: 13px; }
+  @media (max-width: 820px) {
+    .layout { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+    aside { border-left: 0; border-top: 1px solid var(--line); max-height: 34vh; }
+    aside.collapsed { max-height: 44px; overflow: hidden; }
+    #log { padding: 12px; }
+    .timeline li { grid-template-columns: 78px 1fr; }
+  }
+  @media (min-width: 821px) { #togglePanel { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>О!дин запрос</h1>
+  <span class="status" id="status">подключаюсь…</span>
+  <button type="button" id="reset" title="Начать новый разговор">Новый разговор</button>
+</header>
+<div class="layout">
+  <main class="chat">
+    <div id="log" aria-live="polite">
+      <div class="msg agent"><div class="bubble">Опишите поездку одним сообщением — например: «хочу к тёплому морю в ноябре, недорого, с ребёнком 5 лет, из Москвы». Я уточню только необходимое и соберу план целиком.</div></div>
+    </div>
+    <form id="form" autocomplete="off">
+      <input id="input" placeholder="Куда и когда хотите поехать?" aria-label="Сообщение агенту">
+      <button class="primary" type="submit" id="send">Отправить</button>
+    </form>
+  </main>
+  <aside id="panel">
+    <button type="button" id="togglePanel">Как агент думает ▾</button>
+    <h2>Как агент думает</h2>
+    <ul id="steps"><li class="empty">Шаги появятся после первого запроса</li></ul>
+    <h2>Допущения</h2>
+    <div class="chips" id="assumptions"><span class="empty">Пока нет</span></div>
+  </aside>
+</div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const log = $("log");
+let sessionId = null, ws = null, wsReady = false, busy = false, pending = null, stepsEl = null;
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k === "text") node.textContent = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of children) if (c != null) node.append(c);
+  return node;
+}
+const rub = (n) => (n == null ? "—" : Math.round(n).toLocaleString("ru-RU").replace(/,/g, " ") + " ₽");
+const hm = (iso) => (iso ? iso.slice(11, 16) : "");
+const dm = (iso) => (iso ? `${iso.slice(8, 10)}.${iso.slice(5, 7)}` : "");
+const TRANSFER = { taxi: "такси", shuttle: "шаттл", public: "общественный транспорт" };
+const MEALS = { RO: "без питания", BB: "завтраки", HB: "завтрак и ужин", AI: "всё включено" };
+
+// ---------------------------------------------------------------- транспорт: WebSocket, запасной REST
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  try { ws = new WebSocket(`${proto}://${location.host}/api/chat/ws`); } catch (e) { ws = null; setStatus("REST"); return; }
+  ws.onopen = () => { wsReady = true; setStatus("онлайн"); };
+  ws.onclose = () => { wsReady = false; setStatus("REST (без живых шагов)"); if (busy && pending) restFallback(); };
+  ws.onerror = () => {};
+  ws.onmessage = (ev) => onEvent(JSON.parse(ev.data));
+}
+function setStatus(text) { $("status").textContent = text; }
+
+function send(body, shownText) {
+  if (busy) return;
+  if (shownText) log.append(el("div", { class: "msg user", text: shownText }));
+  body = { ...body, session_id: sessionId };
+  const uid = userId(); if (uid) body.user_id = uid;
+  busy = true; pending = body; setBusy(true);
+  resetSteps();
+  const typing = el("div", { class: "typing", id: "typing", text: "агент думает…" });
+  log.append(typing); scroll();
+  if (wsReady) ws.send(JSON.stringify(body)); else restFallback();
+}
+async function restFallback() {
+  const body = pending;
+  try {
+    const r = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = await r.json();
+    (data.trace || []).forEach((s) => onEvent({ type: "trace", ...s }));
+    onEvent({ type: "response", data });
+  } catch (e) { onEvent({ type: "error", detail: String(e) }); }
+}
+function onEvent(e) {
+  if (e.type === "step_start") return stepStart(e);
+  if (e.type === "trace") return stepDone(e);
+  $("typing")?.remove();
+  busy = false; pending = null; setBusy(false);
+  if (e.type === "error") { log.append(el("div", { class: "msg agent error" }, el("div", { class: "bubble", text: "Ошибка: " + e.detail }))); scroll(); return; }
+  render(e.data);
+}
+function setBusy(on) { $("send").disabled = on; document.querySelectorAll("#log .actions button").forEach((b) => (b.disabled = on)); }
+
+// ---------------------------------------------------------------- панель шагов
+function resetSteps() { stepsEl = $("steps"); stepsEl.replaceChildren(); }
+function stepStart(e) { stepsEl.append(el("li", { class: "running", "data-step": e.step, text: e.label })); }
+function stepDone(e) {
+  let li = [...stepsEl.querySelectorAll("li.running")].find((x) => x.dataset.step === e.step);
+  if (!li) { li = el("li"); stepsEl.append(li); }
+  li.className = "";
+  li.replaceChildren(...[el("b", { text: e.step }), e.ms ? el("span", { class: "ms", text: `${e.ms} мс` }) : null,
+    el("span", { class: "detail", text: e.detail })].filter(Boolean));
+}
+
+// ---------------------------------------------------------------- ответ агента
+function render(r) {
+  sessionId = r.session_id;
+  const box = el("div", { class: "msg agent", "data-stage": r.stage }, el("div", { class: "bubble", text: r.message }));
+  if (r.diff?.length) box.append(diffBlock(r.diff));
+  const dests = r.cards.filter((c) => c.type === "destination");
+  if (dests.length) box.append(el("div", { class: "cards dests" }, ...dests.map((c) => destCard(c.data))));
+  const other = el("div", { class: "cards" });
+  for (const c of r.cards) {
+    if (c.type === "plan") other.append(planCard(c.data));
+    else if (c.type === "comparison") other.append(compareCard(c.data));
+    else if (c.type === "order") other.append(orderCard(c.data));
+  }
+  if (other.childElementCount) box.append(other);
+  for (const q of r.questions || []) {
+    box.append(el("div", { class: "question" }, el("div", { class: "q", text: q.text }),
+      el("div", { class: "actions" }, ...q.options.map((o) => button(o.label, () => o.action ? send({ action: o.action }, o.label) : send({ message: o.text }, o.text))))));
+  }
+  // «Выбрать: X» уже есть на карточках направлений — кнопки ниже не дублируем
+  const replies = (r.quick_replies || []).filter((q) => !(dests.length && q.action?.type === "select_destination"));
+  if (replies.length) {
+    box.append(el("div", { class: "actions" }, ...replies.map((q, i) =>
+      button(q.label, () => q.action ? send({ action: q.action }, q.label) : send({ message: q.text }, q.text), i === 0 && q.action?.type === "checkout"))));
+  }
+  log.append(box);
+  const a = r.cards.find((c) => c.type === "assumptions");
+  renderAssumptions(a ? a.data.items : r.state?.assumptions || []);
+  scroll();
+}
+function button(label, onclick, primary = false) {
+  return el("button", { type: "button", class: primary ? "primary" : "", text: label, onclick });
+}
+function list(items, cls) { return items?.length ? el("ul", {}, ...items.map((t) => el("li", { class: cls || "", text: t }))) : null; }
+
+function destCard(d) {
+  const temps = [d.air_temp != null ? `воздух ${d.air_temp}°` : null, d.water_temp != null ? `вода ${d.water_temp}°` : null,
+    d.flight_hours ? `${d.flight_hours} ч в пути` : null].filter(Boolean).join(" · ");
+  const ex = d.explanation || {};
+  return el("div", { class: "card", "data-testid": "destination" },
+    el("h3", { text: `${d.rank ? d.rank + ". " : ""}${d.name}` }), el("div", { class: "sub", text: `${d.country}${temps ? " · " + temps : ""}` }),
+    list(ex.why), list(ex.tradeoffs, "minus"), list(ex.risks, "risk"),
+    el("div", { class: "price", text: `≈ ${rub(d.est_total_rub)} на всех` }),
+    el("div", { class: "actions" }, button("Выбрать", () => send({ action: { type: "select_destination", id: d.id } }, `Выбрать: ${d.name}`), true)));
+}
+
+function planCard(p) {
+  const o = p.outbound, b = p.return, h = p.hotel, tin = p.transfer_in, tout = p.transfer_out;
+  const mode = (x) => (x.mode === "train" ? "поезд" : "рейс");
+  // выезд к обратному рейсу: трансфер + 2 ч в аэропорту (40 мин на вокзале) — как в напоминаниях агента
+  const leave = new Date(new Date(b.departure).getTime() - (tout.minutes + (b.mode === "train" ? 40 : 120)) * 60000);
+  const pad = (n) => String(n).padStart(2, "0");
+  const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const atHotel = iso(new Date(new Date(o.arrival).getTime() + tin.minutes * 60000));
+  const rows = [
+    [o.departure, `${mode(o)} ${o.carrier}: ${o.from} → ${o.to}, ${o.duration_h} ч${o.stops ? ", с пересадкой" : ", без пересадок"}`],
+    [o.arrival, `прилёт; ${TRANSFER[tin.kind] || tin.kind} до отеля ~${tin.minutes} мин`],
+    [atHotel, `в отеле: ${h.name}${h.check_in ? `, заселение с ${h.check_in}` : ""}${h.meals ? "; " + (MEALS[h.meals] || h.meals) : ""}`],
+    [iso(leave), `выезд из отеля${h.check_out ? ` (номер до ${h.check_out})` : ""}; ${TRANSFER[tout.kind] || tout.kind} ~${tout.minutes} мин`],
+    [b.departure, `${mode(b)} ${b.carrier}: ${b.from} → ${b.to}`],
+  ].sort((x, y) => x[0].localeCompare(y[0])).map(([iso, t]) => [`${dm(iso)} ${hm(iso)}`, t]);
+  const ex = h.explanation || {};
+  const pb = p.price_breakdown || {};
+  return el("div", { class: "card", "data-testid": "plan" },
+    el("h3", { text: `${p.destination.name}, ${dm(p.check_in)}–${dm(p.check_out)} · ${p.nights} ноч.` }),
+    el("ul", { class: "timeline" }, ...rows.map(([w, t]) => el("li", {}, el("span", { class: "when", text: w }), el("span", { text: t })))),
+    el("div", { class: "sub", text: `Почему этот отель (${h.rating ?? "—"}★ по отзывам):` }), list(ex.why), list(ex.tradeoffs, "minus"), list(ex.risks, "risk"),
+    issuesBlock(p.issues || []),
+    el("div", { class: "price", text: `Итого ${rub(p.total_rub)}` }),
+    el("div", { class: "sub", text: `билеты ${rub(pb.transport)} · отель ${rub(pb.hotel)} · трансферы ${rub(pb.transfers)}` }),
+    p.rebook ? el("div", { class: "diff", text: `К оплаченной брони ${p.rebook.previous_order_id}: ${p.rebook.price_difference_rub >= 0 ? "доплата " + rub(p.rebook.price_difference_rub) : "вернём " + rub(-p.rebook.price_difference_rub)}` }) : null);
+}
+
+function issuesBlock(issues) {
+  const shown = issues.filter((i) => i.level !== "info");
+  const ul = el("ul", { class: "issues", "data-testid": "issues" });
+  if (!shown.length) ul.append(el("li", {}, el("span", { class: "dot ok" }), el("span", { text: "Стыковки проверены — проблем нет" })));
+  for (const i of [...shown, ...issues.filter((i) => i.level === "info")]) {
+    ul.append(el("li", { "data-level": i.level }, el("span", { class: `dot ${i.level}`, title: i.level }),
+      el("span", {}, document.createTextNode(i.message), i.fix ? el("span", { class: "fix", text: ` — ${i.fix}` }) : null)));
+  }
+  return ul;
+}
+
+function compareCard(c) {
+  const title = { hotel: "Отели — сравнение", transport: "Рейсы туда — сравнение", transfer: "Трансфер до отеля" }[c.kind] || "Сравнение";
+  const row = (x) => {
+    const left = c.kind === "hotel" ? `${x.name} · ${x.rating ?? "—"}★ · ${MEALS[x.meals] || ""}`
+      : c.kind === "transfer" ? `${TRANSFER[x.kind] || x.kind}, ~${x.minutes} мин`
+      : `${x.carrier} ${hm(x.departure)} · ${x.duration_h} ч${x.stops ? " · пересадка" : ""}`;
+    const price = c.kind === "hotel" ? x.price_total_rub : x.price_rub;
+    return el("div", { class: "row" + (x.selected ? " sel" : "") }, el("span", { text: (x.selected ? "✓ " : "") + left }), el("span", { text: rub(price) }));
+  };
+  return el("details", { class: "card compare" }, el("summary", { text: title }), ...c.items.map(row));
+}
+
+function orderCard(o) {
+  const services = (o.services || []).map((s) => `${s.title}: ${s.status_text}`);
+  const rem = (o.reminders || []).slice(0, 5).map((r) => `${dm(r.at)} ${hm(r.at)} — ${r.text}`);
+  return el("div", { class: "card", "data-testid": "order" },
+    el("h3", { text: `Бронь ${o.order_id}` }), el("div", { class: "sub", text: `оплачено ${rub(o.paid_rub)} · оплата имитирована` }),
+    list(o.cart.items.map((i) => `${i.title} — ${rub(i.price_rub)}`)),
+    services.length ? el("div", { class: "sub", text: "Услуги:" }) : null, list(services),
+    rem.length ? el("div", { class: "sub", text: "Напоминания:" }) : null, list(rem, "minus"),
+    o.previous_order_id ? el("div", { class: "diff", text: `Заменяет бронь ${o.previous_order_id}: ${o.price_difference_rub >= 0 ? "доплата " + rub(o.price_difference_rub) : "вернём " + rub(-o.price_difference_rub)}` }) : null);
+}
+
+function diffBlock(diff) {
+  return el("div", { class: "diff", "data-testid": "diff" }, el("b", { text: "Было → стало: " }),
+    ...diff.map((d, i) => el("span", { text: `${i ? "; " : ""}${d.label.toLowerCase()} ${d.before} → ${d.after}` })));
+}
+
+function renderAssumptions(items) {
+  const box = $("assumptions");
+  box.replaceChildren();
+  if (!items.length) { box.append(el("span", { class: "empty", text: "Пока нет" })); return; }
+  for (const a of items) {
+    box.append(el("span", { class: "chip" + (a.source === "profile" ? " profile" : ""), title: a.reason || "", "data-testid": "assumption" },
+      el("span", { text: a.value }),
+      el("button", { type: "button", "aria-label": `Убрать: ${a.value}`, text: "×",
+        onclick: () => send({ action: { type: "remove_assumption", field: a.field } }, `Убрать: ${a.value}`) })));
+  }
+}
+
+function scroll() { log.scrollTop = log.scrollHeight; }
+function userId() { try { return localStorage.getItem("travel_user_id"); } catch (e) { return null; } }
+
+$("form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const text = $("input").value.trim();
+  if (!text) return;
+  $("input").value = "";
+  send({ message: text }, text);
+});
+$("reset").addEventListener("click", () => {
+  sessionId = null;
+  log.replaceChildren(log.firstElementChild);
+  $("steps").replaceChildren(el("li", { class: "empty", text: "Шаги появятся после первого запроса" }));
+  renderAssumptions([]);
+});
+$("togglePanel").addEventListener("click", () => $("panel").classList.toggle("collapsed"));
+if (matchMedia("(max-width: 820px)").matches) $("panel").classList.add("collapsed");
+connect();
+</script>
+</body>
+</html>

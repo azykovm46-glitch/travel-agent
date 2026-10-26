@@ -2,6 +2,7 @@
 
     uvicorn api.main:app --reload --port 8000
 
+GET  /             запасной веб-интерфейс (static/index.html, без сборки)
 POST /api/chat     {session_id?, message?, action?} -> AgentResponse
 WS   /api/chat/ws  те же запросы; в ответ поток событий step_start / trace, затем response
 GET  /api/session/{id}                              -> TripState
@@ -20,6 +21,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect  # noqa: E402
+from fastapi.responses import FileResponse  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
@@ -45,6 +47,15 @@ class ChatRequest(BaseModel):
     user_id: str | None = None          # необязательно: включает память между сессиями
     message: str | None = None
     action: dict[str, Any] | None = None
+
+
+INDEX = Path(__file__).resolve().parents[1] / "static" / "index.html"
+
+
+@app.get("/", include_in_schema=False)
+def index() -> FileResponse:
+    """Запасной веб-интерфейс: чат, карточки, допущения, шаги агента по WebSocket."""
+    return FileResponse(INDEX, media_type="text/html; charset=utf-8")
 
 
 @app.get("/api/health")
