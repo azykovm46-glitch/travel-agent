@@ -4,7 +4,8 @@
     python evals/run.py --offline    # только правила
 
 Симулированный пользователь: отвечает на уточнения первой кнопкой,
-выбирает первое направление, затем оформляет. Метрики:
+выбирает первое направление, затем оформляет. Если план не собрался (отели отсеяны условиями) —
+жмёт первую кнопку («Показать с завтраком вместо «всё включено»» и т. п.). Метрики:
   completion   — доля сценариев, дошедших до брони за <= 6 ходов
   clarify_avg  — среднее число уточняющих вопросов
   first_rec_s  — время до первой рекомендации (карточки направления или плана)
@@ -125,7 +126,7 @@ def run(offline: bool) -> dict:
                     break
                 if resp.questions:
                     resp = agent.handle(resp.session_id, message=resp.questions[0].options[0].text)
-                elif resp.stage == "inspire":
+                elif resp.stage == "inspire" or (resp.stage == "plan" and not resp.state.plan and resp.quick_replies):
                     resp = agent.handle(resp.session_id, action=resp.quick_replies[0].action)
                 elif resp.stage == "plan" and resp.state.plan:
                     resp = agent.handle(resp.session_id, action={"type": "checkout"})

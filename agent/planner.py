@@ -37,6 +37,16 @@ log = logging.getLogger(__name__)
 WARNING_PENALTY = {"leave_day_before": 0.12, "early_arrival": 0.03, "late_arrival": 0.03}
 
 # Первое сообщение без этих слов и без данных о поездке — офтоп
+# Кнопки «снять условие», когда отели отсеяны жёсткими фильтрами: must_have → варианты (подпись, патч),
+# первый подходящий — тот, после которого остаётся хоть один отель
+RELAX_MUST_HAVE = {
+    "all_inclusive": [("Показать с завтраком вместо «всё включено»",
+                       {"must_have_remove": ["all_inclusive"], "must_have_add": ["breakfast"]}),
+                      ("Показать без «всё включено»", {"must_have_remove": ["all_inclusive"]})],
+    "breakfast": [("Показать без завтрака", {"must_have_remove": ["breakfast"]})],
+    "free_cancellation": [("Показать без бесплатной отмены", {"must_have_remove": ["free_cancellation"]})],
+}
+
 TRAVEL_WORDS = (r"отдох|отпуск|поездк|путешеств|съезд|поехать|поеду|едем|лететь|полет|улет|тур\b|билет|отел|"
                 r"мор|пляж|гор[ыа]|выходн|куда|trip|travel|vacation|holiday|hotel|flight")
 
@@ -391,6 +401,21 @@ class TravelAgent:
                         f"({', '.join(open_)}). Пока показываю горы без лыж — или перенесём поездку?"), month
         return None, None
 
+    @staticmethod
+    def _relax_options(state: TripState) -> list[QuickReply]:
+        """Кнопки снять по одному обязательному условию — только те, после которых найдётся отель."""
+        out = []
+        for m in state.must_have:
+            for label, patch in RELAX_MUST_HAVE.get(m, []):
+                if any(x in state.must_have for x in patch.get("must_have_add", [])):
+                    continue
+                must = [x for x in state.must_have if x != m] + patch.get("must_have_add", [])
+                trial = state.model_copy(update={"must_have": must})
+                if any(not hotel_filters(h, trial) for h in state.candidates.get("hotels", [])):
+                    out.append(QuickReply(label=label, action={"type": "update", "patch": patch}))
+                    break
+        return out
+
     def _plan(self, sid: str, state: TripState, tr: Tracer, old_plan: dict | None) -> AgentResponse:
         be = get_backend()
         dest = be.get_destination(state.selection.destination_id)
@@ -422,7 +447,8 @@ class TravelAgent:
             return AgentResponse(session_id=sid, stage=state.stage, trace=tr.steps, state=state,
                                  message="Не нашёл отелей, которые подходят под все условия ("
                                          + "; ".join(sorted(reasons)[:3]) + "). Могу ослабить одно из условий или предложить другое направление.",
-                                 quick_replies=[QuickReply(label="Другие направления", action={"type": "change_destination"})])
+                                 quick_replies=self._relax_options(state)
+                                 + [QuickReply(label="Другие направления", action={"type": "change_destination"})])
 
         # Стыковка закладывается в выбор: рейсы, прилетающие в день заезда, — в приоритете.
         # Ночной приезд до ~05 утра — тоже «в день заезда»: номер держат (как в validate_plan).

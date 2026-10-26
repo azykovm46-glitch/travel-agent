@@ -396,6 +396,35 @@ class FlowTest(unittest.TestCase):
         self.assertNotIn("не сезон", r.message)
 
     @on_mock
+    def test_all_inclusive_unavailable_offers_breakfast_and_books(self):
+        a = new_agent()
+        r = a.handle(message="всё включено в Казань на неделю в июне вдвоём из Москвы")
+        self.assertIsNone(r.state.plan)                                # в Казани нет «всё включено»
+        relax = r.quick_replies[0]
+        self.assertEqual(relax.label, "Показать с завтраком вместо «всё включено»")
+        r = a.handle(r.session_id, action=relax.action)
+        self.assertNotIn("all_inclusive", r.state.must_have)
+        self.assertIn("breakfast", r.state.must_have)
+        self.assertEqual(r.state.selection.destination_id, "kazan")    # направление не сбросилось
+        self.assertNotEqual(r.state.plan["hotel"]["meals"], "RO")
+        r = a.handle(r.session_id, action={"type": "checkout"})
+        self.assertEqual(r.stage, "booked")
+
+    def test_relax_offers_only_conditions_that_block_hotels(self):
+        search = get_backend().search_hotels
+        no_cancel = lambda *a: [{**h, "free_cancellation": False} for h in search(*a)]  # noqa: E731
+        with mock.patch.object(get_backend(), "search_hotels", no_cancel):
+            a = new_agent()
+            r = a.handle(message="в Сочи на неделю в ноябре вдвоём из Москвы, с завтраком и бесплатной отменой")
+            self.assertIsNone(r.state.plan)
+            labels = [q.label for q in r.quick_replies]
+            self.assertIn("Показать без бесплатной отмены", labels)
+            self.assertNotIn("Показать без завтрака", labels)         # завтрак отели не отсеивает
+            r = a.handle(r.session_id, action=r.quick_replies[0].action)
+        self.assertEqual(r.state.must_have, ["breakfast"])
+        self.assertIsNotNone(r.state.plan)
+
+    @on_mock
     def test_no_ski_resorts_in_catalog_is_said_honestly(self):
         no_ski = [d for d in mock_backend.DESTINATIONS if "ski" not in d["tags"]]
         with mock.patch.object(mock_backend, "DESTINATIONS", no_ski):
