@@ -45,6 +45,6 @@
 {"id": "direct-strict", "text": "Шарм без пересадок вдвоём из Новосибирска в феврале", "expect": {"origin": "Новосибирск", "destination": "sharm", "month": 2, "adults": 2}}
 {"id": "allinc-nonai", "text": "всё включено в Казань на неделю в июне вдвоём из Москвы", "expect": {"origin": "Москва", "destination": "kazan", "month": 6, "adults": 2}}
 {"id": "high-budget", "text": "бюджет 500 тысяч, Дубай, вдвоём из Москвы, декабрь, люкс", "expect": {"origin": "Москва", "destination": "dubai", "month": 12, "adults": 2, "budget_level": "high"}}
-{"id": "zero-budget", "text": "хочу на море за 5 тысяч на неделю вдвоём из Москвы в июле", "expect": {"origin": "Москва", "month": 7, "adults": 2}}
+{"id": "zero-budget", "text": "хочу на море за 5 тысяч на неделю вдвоём из Москвы в июле", "expect": {"origin": "Москва", "month": 7, "adults": 2, "first_message_contains": "не помещается"}}
 {"id": "pet-dubai", "text": "в Дубай с собакой вдвоём из Москвы в ноябре на неделю", "expect": {"origin": "Москва", "destination": "dubai", "month": 11, "adults": 2}}
 {"id": "exact-date-kazan", "text": "в Казань 3 апреля на 4 ночи вдвоём из Москвы", "expect": {"origin": "Москва", "destination": "kazan", "check_in_mmdd": "04-03", "adults": 2}}

@@ -396,20 +396,26 @@ class TravelAgent:
             cards.append(Card(type="destination", data={**d, "rank": i, "explanation": explain_destination(d)}))
         cards.append(self._assumptions_card(state))
         qr = [QuickReply(label=f"Выбрать: {d['name']}", action={"type": "select_destination", "id": d["id"]}) for d in top]
-        ski_note, ski_month = self._ski_season_note(state, ranked, start, end, tr)
+        note, ski_month = self._ski_season_note(state, ranked, start, end, tr)
+        budget, cheapest = state.budget.total_rub, min(ranked, key=lambda d: d["est_total_rub"])
+        if budget and cheapest["est_total_rub"] > budget:    # «на море за 5 тысяч» — говорим сразу, а не в плане
+            budget_note = (f"В бюджет {_rub(budget)} такая поездка не помещается: самое доступное из подходящего — "
+                           f"{cheapest['name']}, около {_rub(cheapest['est_total_rub'])} на всех. "
+                           f"Показываю варианты; бюджет можно поднять или сократить поездку.")
+            note = f"{budget_note} {note}" if note else budget_note
         if ski_month:
             qr.insert(0, QuickReply(label=f"Перенести на {policy.MONTH_NOM[ski_month - 1]}",
                                     action={"type": "update", "patch": {"month": ski_month}}))
         best = top[0]
-        msg = self._write(tr, {"stage": "inspire", "request": describe_request(state), "shown_note": ski_note,
+        msg = self._write(tr, {"stage": "inspire", "request": describe_request(state), "shown_note": note,
                               "options": [{k: d[k] for k in ("name", "country", "air_temp", "water_temp", "flight_hours",
                                                              "est_total_rub", "reasons", "tradeoffs")} for d in top],
                               "assumptions": [a.value for a in state.assumptions]}) or (
             f"Под запрос ({describe_request(state)}) подходят: {', '.join(d['name'] for d in top)}. "
             f"Лучше всего — {best['name']}: {', '.join(best['reasons'][:2]) or 'хороший баланс цены и дороги'}, "
             f"ориентировочно {_rub(best['est_total_rub'])} на всех. Выберите направление — соберу поездку целиком.")
-        if ski_note:                                  # не доверяем LLM пересказ: оговорка видна всегда
-            msg = f"{ski_note} {msg}"
+        if note:                                      # не доверяем LLM пересказ: оговорка видна всегда
+            msg = f"{note} {msg}"
         return AgentResponse(session_id=sid, stage=state.stage, message=msg, cards=cards,
                              quick_replies=qr, trace=tr.steps, state=state)
 
@@ -536,20 +542,20 @@ class TravelAgent:
             sel.hotel_id = None
         hotel_pool = [hotel_locked] if hotel_locked else hotels[:8]
 
-        def transfers_for(o, b, hotel):
+        def transfers_for(o, b, hotel, keep_kind):
             point = "station" if o["mode"] == "train" else "airport"
-            tin = self._pick_transfer(be.search_transfers(dest["id"], point, f"hotel:{hotel['id']}", o["arrival"], t.total, t.pets), state, o["arrival"])
+            opts = be.search_transfers(dest["id"], point, f"hotel:{hotel['id']}", o["arrival"], t.total, t.pets)
+            tin = next((x for x in opts if x["kind"] == keep_kind), None) or self._pick_transfer(opts, state, o["arrival"])
             point_b = "station" if b["mode"] == "train" else "airport"
             tout = self._pick_transfer(be.search_transfers(dest["id"], f"hotel:{hotel['id']}", point_b, b["departure"], t.total, t.pets), state, b["departure"])
             return tin, tout
 
-        with tr.step("assemble") as h:
-            budget = state.budget.total_rub
+        def assemble(keep_kind):
             combos = []
             for o in out_pool:
                 for b in back_pool:
                     for hh in hotel_pool:
-                        tin, tout = transfers_for(o, b, hh)
+                        tin, tout = transfers_for(o, b, hh, keep_kind)
                         total = o["price_rub"] + b["price_rub"] + hh["price_total_rub"] + tin["price_rub"] + tout["price_rub"]
                         score = 0.25 * o["score"] + 0.2 * b["score"] + 0.55 * hh["score"]
                         combos.append((score, total, o, b, hh, tin, tout))
@@ -565,6 +571,21 @@ class TravelAgent:
                 if not any(i["level"] == "error" for i in issues):
                     penalty = sum(WARNING_PENALTY.get(i["code"], 0.03) for i in issues if i["level"] == "warning")
                     stitched.append((c[0] - penalty, *c[1:]))
+            return combos, stitched
+
+        with tr.step("assemble") as h:
+            budget = state.budget.total_rub
+            kind = sel.transfer_in_kind
+            combos, stitched = assemble(kind)
+            if kind:              # выбранный вручную трансфер держим, пока он есть и не ломает стыковку
+                kept = [c for c in stitched if c[5]["kind"] == kind]
+                if kept:
+                    stitched = kept
+                    tr.add("transfer", f"оставил выбранный вами трансфер до отеля: {TRANSFER_NAME.get(kind, kind)}")
+                else:
+                    tr.add("transfer", f"выбранный трансфер ({TRANSFER_NAME.get(kind, kind)}) больше не подходит — подобрал другой")
+                    sel.transfer_in_kind = None
+                    combos, stitched = assemble(None)
             pool = stitched or combos
             fitting = [c for c in pool if not budget or c[1] <= budget]
             if fitting:
@@ -751,6 +772,7 @@ class TravelAgent:
         plan["price_breakdown"] = {**plan.get("price_breakdown", {}),
                                    "transfers": new["price_rub"] + plan["transfer_out"]["price_rub"]}
         state.selection.transfer_in_id = new["id"]
+        state.selection.transfer_in_kind = new["kind"]
         cart = order["cart"]
         items = [{**i, "id": new["id"], "price_rub": new["price_rub"]} if i["id"] == old["id"] else i for i in cart["items"]]
         name = TRANSFER_NAME.get(new["kind"], new["kind"])

@@ -54,6 +54,11 @@ def new_agent() -> TravelAgent:
 
 
 class UnderstandTest(unittest.TestCase):
+    def test_correct_words_are_not_typo_fixed(self):
+        p = rule_patch("хочу одновременно на лыжах и на пляже в августе", TripState(), TODAY)
+        self.assertEqual(p["destination_hint"], "на пляже")                # не «на пляжа»
+        self.assertFalse(p.get("typo_fixes"))
+
     def test_demo_query_extracts_explicit_and_hidden(self):
         s = TripState()
         p = rule_patch(DEMO, s)
@@ -562,6 +567,32 @@ class AfterBookingTest(unittest.TestCase):
         self.assertEqual(r.state.plan["total_rub"], r.state.order["paid_rub"])
         self.assertIn(new["id"], [i["id"] for i in r.state.order["cart"]["items"]])
 
+    def choose_shuttle(self, a, r):
+        r = a.handle(r.session_id, action={"type": "transfer_options"})
+        shuttle = next(q.action for q in r.quick_replies
+                       if q.action and q.action.get("type") == "select_transfer" and "shuttle" in q.action["id"])
+        r = a.handle(r.session_id, action=shuttle)
+        self.assertEqual(r.state.plan["transfer_in"]["kind"], "shuttle")
+        return r
+
+    @on_mock
+    def test_chosen_transfer_survives_date_change(self):
+        a, r = self.booked()
+        r = self.choose_shuttle(a, r)
+        r = a.handle(r.session_id, action={"type": "change_dates", "shift_days": 2})
+        self.assertEqual(r.state.plan["transfer_in"]["kind"], "shuttle")
+        self.assertTrue(any("оставил выбранный" in t.detail for t in r.trace))
+        r = a.handle(r.session_id, action={"type": "checkout"})
+        self.assertIn(r.state.plan["transfer_in"]["id"], [i["id"] for i in r.state.order["cart"]["items"]])
+
+    @on_mock
+    def test_chosen_transfer_replaced_when_it_no_longer_fits(self):
+        a, r = self.booked()
+        r = self.choose_shuttle(a, r)
+        r = a.handle(r.session_id, message="с нами едет собака")             # в шаттл с собакой нельзя
+        self.assertEqual(r.state.plan["transfer_in"]["kind"], "taxi")
+        self.assertTrue(any("больше не подходит" in t.detail for t in r.trace))
+
     def test_transfer_with_pet_offers_only_pet_friendly(self):
         a, r = self.booked("Сочи в ноябре вдвоём из Москвы с собакой")
         r = a.handle(r.session_id, action={"type": "transfer_options"})
@@ -589,6 +620,18 @@ class ConstraintHonestyTest(unittest.TestCase):
         r = new_agent().handle(message="Сочи в ноябре вдвоём из Москвы, не больше 5 часов в пути")
         self.assertNotIn("не уложиться", r.message)
         self.assertNotIn("не добраться", r.message)
+
+    def test_unrealistic_budget_is_said_in_first_answer(self):
+        r = new_agent().handle(message="хочу на море за 5 тысяч на неделю вдвоём из Москвы в июле")
+        self.assertEqual(r.stage, "inspire")
+        self.assertTrue(r.message.startswith("В бюджет 5 000 ₽ такая поездка не помещается"))
+        cheapest = min(c.data["est_total_rub"] for c in r.cards if c.type == "destination")
+        self.assertGreater(cheapest, 5000)
+
+    def test_realistic_budget_has_no_warning(self):
+        r = new_agent().handle(message="хочу на море на неделю вдвоём из Москвы в июле, бюджет 400 тысяч")
+        self.assertEqual(r.stage, "inspire")
+        self.assertNotIn("не помещается", r.message)
 
     def test_past_date_with_year_is_said(self):
         r = new_agent().handle(message="в Сочи вдвоём из Москвы 5 января 2020 года на 3 ночи")

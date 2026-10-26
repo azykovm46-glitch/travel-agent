@@ -23,7 +23,7 @@ RESELECT: dict[str, list[str]] = {
     "origin_city": ["outbound_id", "return_id", "transfer_in_id", "transfer_out_id"],
     "dates": ["outbound_id", "return_id", "transfer_in_id", "transfer_out_id"],
     "travelers": ["outbound_id", "return_id", "hotel_id", "transfer_in_id", "transfer_out_id"],
-    "destination": ["outbound_id", "return_id", "hotel_id", "transfer_in_id", "transfer_out_id"],
+    "destination": ["outbound_id", "return_id", "hotel_id", "transfer_in_id", "transfer_out_id", "transfer_in_kind"],
     "budget": ["outbound_id", "return_id", "hotel_id"],
     "constraints": ["outbound_id", "return_id"],
     "must_have": ["hotel_id"],

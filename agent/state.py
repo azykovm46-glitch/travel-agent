@@ -82,6 +82,7 @@ class Selection(BaseModel):
     hotel_id: str | None = None
     transfer_in_id: str | None = None
     transfer_out_id: str | None = None
+    transfer_in_kind: str | None = None             # вид трансфера до отеля, выбранный вручную (после брони)
     locked: list[str] = Field(default_factory=list)   # поля, выбранные пользователем вручную
 
 
