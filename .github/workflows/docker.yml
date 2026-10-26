@@ -16,7 +16,10 @@ jobs:
         run: docker build -t travel-agent .
       - name: В образе нет .env и секрета
         run: |
-          docker run --rm travel-agent sh -c 'test ! -e /app/.env && ! grep -rqs ci-fake-secret /app'
+          docker run --rm travel-agent sh -c '
+            if [ -e /app/.env ]; then echo "::error::.env попал в образ"; exit 1; fi
+            if grep -rls ci-fake-secret /app; then echo "::error::секрет найден в файлах выше"; exit 1; fi
+            echo "OK: ни .env, ни секрета"'
       - name: Контейнер отвечает
         run: |
           docker run -d --name agent -p 8000:8000 -e AGENT_OFFLINE=1 travel-agent
