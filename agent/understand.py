@@ -26,6 +26,8 @@ KIDS_COUNT = {"двое": 2, "двоих": 2, "двумя": 2, "двух": 2, "�
               "трех": 3, "четверо": 4, "четырьмя": 4}
 _KIDS_NUM = r"(\d+|" + "|".join(KIDS_COUNT) + r")"
 GROUP_COUNT = {"двое": 2, "трое": 3, "четверо": 4, "пятеро": 5, "шестеро": 6}
+MONTH_IN = ["январе", "феврале", "марте", "апреле", "мае", "июне", "июле", "августе",
+            "сентябре", "октябре", "ноябре", "декабре"]
 MONTH_STEMS = {"январ": 1, "феврал": 2, "март": 3, "апрел": 4, "ма": 5, "июн": 6, "июл": 7,
                "август": 8, "сентябр": 9, "октябр": 10, "ноябр": 11, "декабр": 12}
 _MONTH_GEN = r"(январ|феврал|март|апрел|ма(?=[яй])|июн|июл|август|сентябр|октябр|ноябр|декабр)\w*"
@@ -51,6 +53,23 @@ def _future_date(day: int, month: int, today: date) -> date | None:
         return d if d >= today else date(today.year + 1, month, day)
     except ValueError:            # «31 февраля»
         return None
+
+
+def _date_note(t: str, today: date) -> str | None:
+    """Названная дата, которую нельзя взять как есть: прошедшая («5 января 2020») или несуществующая («30 февраля»)."""
+    m = re.search(rf"\b(\d{{1,2}})\s+{_MONTH_GEN}\s+(20\d\d)", t)
+    if m:
+        try:
+            asked = date(int(m.group(3)), MONTH_STEMS[m.group(2)], int(m.group(1)))
+        except ValueError:
+            asked = None
+        future = _future_date(int(m.group(1)), MONTH_STEMS[m.group(2)], today)
+        if asked and future and asked < today:
+            return f"{m.group(0)} уже прошло — беру ближайшее {future:%d.%m.%Y}."
+    for m in re.finditer(rf"\b(\d{{1,2}})\s+{_MONTH_GEN}", t):
+        if _future_date(int(m.group(1)), MONTH_STEMS[m.group(2)], today) is None:
+            return f"{m.group(0)} не бывает — подбираю даты в {MONTH_IN[MONTH_STEMS[m.group(2)] - 1]}."
+    return None
 
 
 def _parse_dates(t: str, today: date) -> tuple[date | None, date | None]:
@@ -122,6 +141,9 @@ def rule_patch(message: str, state: TripState, today: date | None = None) -> dic
             p["month"] = num
             break
     start, end = _parse_dates(t, today)
+    note = _date_note(t, today)
+    if note:
+        p["date_note"] = note
     if start:
         p["start"], p["month"] = start.isoformat(), start.month
     if end:

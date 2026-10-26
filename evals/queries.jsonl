@@ -25,9 +25,9 @@
 {"id": "conflict-beach-winter", "text": "хочу купаться в тёплом море в январе, недорого, вдвоём из Москвы", "expect": {"origin": "Москва", "month": 1, "adults": 2, "budget_level": "low"}}
 {"id": "conflict-ski-sea", "text": "хочу одновременно на лыжах и на пляже в августе из Казани вдвоём", "expect": {"origin": "Казань", "adults": 2}}
 {"id": "conflict-luxury-budget", "text": "хочу люкс-отель, но уложиться в 25 тысяч, Дубай, вдвоём из Москвы, декабрь", "expect": {"origin": "Москва", "destination": "dubai", "month": 12, "first_message_contains": "Люкс"}}
-{"id": "conflict-direct-far", "text": "Пхукет без пересадок и не больше 4 часов в пути из Москвы в январе вдвоём", "expect": {"origin": "Москва", "destination": "phuket", "month": 1, "adults": 2}}
-{"id": "past-date", "text": "в Сочи вдвоём из Москвы 5 января 2020 года на 3 ночи", "expect": {"origin": "Москва", "destination": "sochi", "check_in_mmdd": "01-05"}}
-{"id": "invalid-date", "text": "Анталья с 30 февраля вдвоём из Москвы", "expect": {"origin": "Москва", "destination": "antalya", "month": 2, "adults": 2}}
+{"id": "conflict-direct-far", "text": "Пхукет без пересадок и не больше 4 часов в пути из Москвы в январе вдвоём", "expect": {"origin": "Москва", "destination": "phuket", "month": 1, "adults": 2, "first_message_contains": "не уложиться"}}
+{"id": "past-date", "text": "в Сочи вдвоём из Москвы 5 января 2020 года на 3 ночи", "expect": {"origin": "Москва", "destination": "sochi", "check_in_mmdd": "01-05", "first_message_contains": "уже прошло"}}
+{"id": "invalid-date", "text": "Анталья с 30 февраля вдвоём из Москвы", "expect": {"origin": "Москва", "destination": "antalya", "month": 2, "adults": 2, "first_message_contains": "не бывает"}}
 {"id": "year-boundary", "text": "из Самары в Дубай с 29 декабря по 4 января вдвоём", "expect": {"origin": "Самара", "destination": "dubai", "adults": 2, "check_in_mmdd": "12-29"}}
 {"id": "unknown-maldives", "text": "хочу на Мальдивы в феврале вдвоём из Москвы", "expect": {"origin": "Москва", "first_message_contains": "Мальдив"}}
 {"id": "unknown-both", "text": "из Урюпинска в Нарнию в марте вдвоём"}
@@ -41,7 +41,7 @@
 {"id": "offtopic-recipe", "text": "дай рецепт борща", "expect": {"first_message_contains": "Я помогаю спланировать поездку"}}
 {"id": "offtopic-math", "text": "сколько будет дважды два", "expect": {"first_message_contains": "Я помогаю спланировать поездку"}}
 {"id": "big-family", "text": "из Москвы в Анталью в июле, двое взрослых и четверо детей 2, 5, 9 и 13 лет", "expect": {"origin": "Москва", "destination": "antalya", "month": 7, "children": 4}}
-{"id": "train-impossible", "text": "в Анталью поездом из Москвы вдвоём в мае", "expect": {"origin": "Москва", "destination": "antalya", "month": 5, "adults": 2}}
+{"id": "train-impossible", "text": "в Анталью поездом из Москвы вдвоём в мае", "expect": {"origin": "Москва", "destination": "antalya", "month": 5, "adults": 2, "first_message_contains": "Поездом до Антальи не добраться"}}
 {"id": "direct-strict", "text": "Шарм без пересадок вдвоём из Новосибирска в феврале", "expect": {"origin": "Новосибирск", "destination": "sharm", "month": 2, "adults": 2}}
 {"id": "allinc-nonai", "text": "всё включено в Казань на неделю в июне вдвоём из Москвы", "expect": {"origin": "Москва", "destination": "kazan", "month": 6, "adults": 2}}
 {"id": "high-budget", "text": "бюджет 500 тысяч, Дубай, вдвоём из Москвы, декабрь, люкс", "expect": {"origin": "Москва", "destination": "dubai", "month": 12, "adults": 2, "budget_level": "high"}}

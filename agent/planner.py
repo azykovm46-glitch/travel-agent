@@ -90,6 +90,21 @@ class Tracer:
         self._record(TraceStep(step=name, detail=detail))
 
 
+def _genitive(name: str) -> str:
+    """«до Антальи», «до Пхукета»; составные и несклоняемые названия — как есть, в кавычках."""
+    if " " in name or "-" in name:
+        return f"направления «{name}»"
+    if name[-1] in "иоуеэы":
+        return name
+    if name[-1] in "яь":
+        return name[:-1] + "и"
+    if name[-1] == "й":
+        return name[:-1] + "я"
+    if name[-1] == "а":
+        return name[:-1] + ("и" if name[-2] in "гкхжшчщ" else "ы")
+    return name + "а"
+
+
 def _source(fresh: list[str], keys: tuple[str, ...]) -> str:
     """Пометка в trace: результаты инструмента получены сейчас или взяты из кэша прошлого хода."""
     if not fresh:
@@ -205,6 +220,8 @@ class TravelAgent:
             notes.append(f"Вылеты «из {raw}» пока не умею искать — "
                          + ("выберите ближайший город из списка." if stage == "clarify"
                             else f"считаю от города {state.origin_city}, поправьте, если нужно."))
+        if patch.get("date_note"):
+            notes.append(patch["date_note"][0].upper() + patch["date_note"][1:])
         if patch.get("near_unavailable"):
             notes.append(f"Ближе {patch['near_unavailable']} м к морю отелей под ваши условия нет — "
                          "поднял вес расположения среди тех, что есть.")
@@ -423,6 +440,21 @@ class TravelAgent:
         return None, None
 
     @staticmethod
+    def _transport_notes(state: TripState, dest: dict, out: dict) -> list[str]:
+        """Явное условие о дороге, которое не выполнить: честно говорим, что выбрали вместо него."""
+        c, opts, notes = state.constraints, state.candidates["outbound"], []
+        name = _genitive(dest["name"])
+        if c.transport == "train" and not any(o["mode"] == "train" for o in opts):
+            notes.append(f"Поездом до {name} не добраться — подобрал {'рейс' if out['mode'] == 'plane' else 'другой транспорт'}.")
+        if c.direct_only and out["stops"] and not any(not o["stops"] for o in opts):
+            notes.append(f"Прямых рейсов до {name} нет — показываю с пересадкой.")
+        if c.max_travel_hours and "max_travel_hours" not in [a.field for a in state.assumptions]:
+            fastest = min(o["duration_h"] for o in opts)
+            if fastest > c.max_travel_hours:
+                notes.append(f"Быстрее {fastest:g} ч до {name} не долететь — в {c.max_travel_hours:g} ч не уложиться.")
+        return notes
+
+    @staticmethod
     def _relax_options(state: TripState) -> list[QuickReply]:
         """Кнопки снять по одному обязательному условию — только те, после которых найдётся отель."""
         out = []
@@ -542,10 +574,11 @@ class TravelAgent:
                 best = min(pool, key=lambda c: c[1])
                 h["detail"] = f"проверено {len(combos)} комбинаций, без ошибок стыковки {len(stitched)}, в бюджет не влезает ни одна — беру самую дешёвую"
             _, total, out, back, hotel, tin, tout = best
-            conflict = None
+            conflict = self._transport_notes(state, dest, out)
             if not fitting and state.budget.level == "high":
-                conflict = (f"Люкс в бюджет {_rub(budget)} не помещается: даже самый доступный вариант стоит "
-                            f"{_rub(total)}. Показываю его; если бюджет можно поднять — соберу люкс.")
+                conflict.append(f"Люкс в бюджет {_rub(budget)} не помещается: даже самый доступный вариант стоит "
+                                f"{_rub(total)}. Показываю его; если бюджет можно поднять — соберу люкс.")
+            conflict = " ".join(conflict) or None
             sel.outbound_id, sel.return_id = out["id"], back["id"]
             sel.hotel_id, sel.transfer_in_id, sel.transfer_out_id = hotel["id"], tin["id"], tout["id"]
 

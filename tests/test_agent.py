@@ -570,6 +570,37 @@ class AfterBookingTest(unittest.TestCase):
         self.assertTrue(all(x.get("pets_ok", True) for x in card["items"]))
 
 
+class ConstraintHonestyTest(unittest.TestCase):
+    """Невыполнимое явное условие агент не подменяет молча, а говорит, что сделал вместо него."""
+
+    def test_train_where_no_trains_is_said(self):
+        r = new_agent().handle(message="в Анталью поездом из Москвы вдвоём в мае")
+        self.assertEqual(r.state.plan["outbound"]["mode"], "plane")
+        self.assertIn("Поездом до Антальи не добраться", r.message)
+
+    @on_mock
+    def test_travel_time_limit_that_cannot_be_met_is_said(self):
+        r = new_agent().handle(message="Пхукет без пересадок и не больше 4 часов в пути из Москвы в январе вдвоём")
+        fastest = r.state.plan["outbound"]["duration_h"]
+        self.assertGreater(fastest, 4)
+        self.assertIn("в 4 ч не уложиться", r.message)
+
+    def test_limit_that_fits_adds_no_note(self):
+        r = new_agent().handle(message="Сочи в ноябре вдвоём из Москвы, не больше 5 часов в пути")
+        self.assertNotIn("не уложиться", r.message)
+        self.assertNotIn("не добраться", r.message)
+
+    def test_past_date_with_year_is_said(self):
+        r = new_agent().handle(message="в Сочи вдвоём из Москвы 5 января 2020 года на 3 ночи")
+        self.assertEqual(r.state.plan["check_in"], "2027-01-05")
+        self.assertIn("5 января 2020 уже прошло", r.message)
+
+    def test_impossible_date_is_said(self):
+        r = new_agent().handle(message="Анталья с 30 февраля вдвоём из Москвы")
+        self.assertEqual(r.state.dates.month or r.state.dates.start.month, 2)
+        self.assertIn("30 февраля не бывает", r.message)
+
+
 class MemoryTest(unittest.TestCase):
     def setUp(self):
         self.store = ProfileStore(Path(tempfile.mkdtemp()) / "profiles.sqlite3")
