@@ -262,6 +262,13 @@ def merge_patches(rules: dict, llm: dict | None) -> dict:
         if k == "origin_city" and not get_backend().normalize_origin(v):
             merged.setdefault("unknown_origin", v)       # город, откуда не умеем искать, — скажем честно
             continue
+        if k == "destination_name" and not get_backend().find_destination_by_text(v):
+            # модель пишет «Antalya» латиницей: переводим как правила, а не нашли — верим правилам (english-family)
+            ru = english_to_russian(v.lower())
+            if get_backend().find_destination_by_text(ru):
+                v = ru
+            elif rules.get(k) and get_backend().find_destination_by_text(rules[k]):
+                continue
         if k in UNION_KEYS and rules.get(k):
             v = sorted(set(rules[k]) | set(v))
         merged[k] = v

@@ -832,6 +832,20 @@ class ScriptedLLM(FakeLLM):
 
 
 class LLMHonestyTest(unittest.TestCase):
+    def test_latin_place_from_llm_does_not_override_rules(self):
+        """english-family: модель вернула «Antalya» латиницей — правила уже нашли Анталью в каталоге."""
+        llm = ScriptedLLM({"intent": "plan", "destination_name": "Antalya", "origin_city": "Казань", "month": 12,
+                           "nights": 7, "children_ages": [5], "adults": 2})
+        r = TravelAgent(llm=llm, today=TODAY).handle(
+            message="Antalya for 7 nights in December with a 5 year old kid from Kazan")
+        self.assertEqual(r.state.selection.destination_id, "antalya")
+        self.assertNotIn("нет данных", r.message)
+
+    def test_llm_place_wins_when_rules_found_nothing(self):
+        llm = ScriptedLLM({"intent": "plan", "destination_name": "Сочи", "origin_city": "Москва", "month": 11, "adults": 2})
+        r = TravelAgent(llm=llm, today=TODAY).handle(message="хочу туда, где олимпиада 2014 была, в ноябре вдвоём из Москвы")
+        self.assertEqual(r.state.selection.destination_id, "sochi")
+
     def test_llm_cannot_invent_origin_city(self):
         llm = ScriptedLLM({"intent": "plan", "origin_city": "Тмутаракань", "destination_name": "Сочи",
                            "month": 11, "adults": 2})
