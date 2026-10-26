@@ -832,6 +832,7 @@ def llm_with(client) -> LLM:
     llm.enabled, llm.model, llm._client = True, "fake", client
     llm.fallback_model = llm.reasoning_effort = ""     # не зависеть от .env разработчика
     llm.retries, llm.retry_pause = 1, 0
+    llm.fallback_base_url = ""                         # запасная — у того же провайдера
     return llm
 
 
@@ -890,6 +891,74 @@ class LLMClientTest(unittest.TestCase):
         llm.model, llm.fallback_model = "main", "backup"
         self.assertEqual(llm.extract_patch("x", "{}", "2026-10-25"), {"intent": "plan"})
         self.assertEqual(seen, ["main", "main", "backup"])
+
+    def test_fallback_model_goes_to_its_own_provider(self):
+        env = {"LLM_API_KEY": "k1", "LLM_MODEL": "main", "LLM_BASE_URL": "https://polza.example/v1",
+               "LLM_FALLBACK_MODEL": "backup", "LLM_FALLBACK_BASE_URL": "https://other.example/v1",
+               "LLM_FALLBACK_API_KEY": "k2", "AGENT_OFFLINE": "0"}
+        with mock.patch.dict(os.environ, env):
+            llm = LLM()
+        self.assertEqual(str(llm.fallback_client.base_url).rstrip("/"), "https://other.example/v1")
+        self.assertEqual(llm.fallback_client.api_key, "k2")
+        self.assertEqual(llm.client.api_key, "k1")
+        main, backup = FakeClient(tools=ApiError(503)), FakeClient(tools='{"intent": "plan"}')
+        llm._client, llm._fallback_client, llm.retry_pause = main, backup, 0
+        self.assertEqual(llm.extract_patch("x", "{}", "2026-10-25"), {"intent": "plan"})
+        self.assertEqual((main.calls, backup.calls), (["tools", "tools"], ["tools"]))
+
+    def test_without_fallback_provider_backup_uses_main_client(self):
+        env = {"LLM_API_KEY": "k1", "LLM_MODEL": "main", "LLM_FALLBACK_MODEL": "backup", "AGENT_OFFLINE": "0"}
+        with mock.patch.dict(os.environ, env):
+            os.environ.pop("LLM_FALLBACK_BASE_URL", None)
+            os.environ.pop("LLM_FALLBACK_API_KEY", None)
+            llm = LLM()
+        self.assertIs(llm.fallback_client, llm.client)
+
+    def test_timeout_goes_to_fallback_without_retry(self):
+        class APITimeoutError(Exception):
+            pass
+
+        client = FakeClient(tools='{"intent": "plan"}')
+        orig, seen = client.create, []
+
+        def create(**kw):
+            seen.append(kw["model"])
+            if kw["model"] == "main":
+                raise APITimeoutError("Request timed out.")
+            return orig(**kw)
+
+        client.chat.completions.create = create
+        llm = llm_with(client)
+        llm.model, llm.fallback_model = "main", "backup"
+        llm.extract_patch("x", "{}", "2026-10-25")
+        self.assertEqual(seen, ["main", "backup"])
+
+    def test_worst_case_wait_when_both_providers_are_down(self):
+        """Оба провайдера: сначала 503 (сразу), на повторе — таймаут. Ход не дольше LLM_DEADLINE."""
+        class APITimeoutError(Exception):
+            pass
+
+        clock, calls = [0.0], {}
+
+        def create(**kw):
+            calls[kw["model"]] = calls.get(kw["model"], 0) + 1
+            if calls[kw["model"]] == 1:
+                clock[0] += 0.5
+                raise ApiError(503)
+            clock[0] += kw["timeout"]                 # провайдер молчит до конца таймаута
+            raise APITimeoutError("Request timed out.")
+
+        client = FakeClient()
+        client.chat.completions.create = create
+        llm = llm_with(client)
+        llm.model, llm.fallback_model = "main", "backup"
+        llm.timeout, llm.retry_pause, llm.deadline = 12, 2, 30
+        with mock.patch("agent.llm.time.monotonic", lambda: clock[0]), \
+                mock.patch("agent.llm.time.sleep", lambda s: clock.__setitem__(0, clock[0] + s)):
+            self.assertIsNone(llm.extract_patch("x", "{}", "2026-10-25"))
+        self.assertEqual(calls, {"main": 2, "backup": 2})            # обе модели честно попробованы
+        self.assertGreater(clock[0], 25)                              # обе модели упёрлись в таймаут
+        self.assertLessEqual(clock[0], 30)
 
     def test_rate_limit_goes_to_fallback_without_retry(self):
         client = FakeClient(tools='{"intent": "plan"}')

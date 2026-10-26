@@ -8,8 +8,11 @@
   tools — принудительный вызов инструмента (лучший вариант, умеют не все модели);
   json  — response_format json_object + схема в промпте;
   text  — схема в промпте, JSON вырезаем из текста ответа.
-На 503 и таймаут модель переспрашиваем LLM_RETRIES раз (по умолчанию 1) с паузой LLM_RETRY_PAUSE,
-потом идём на запасную; повторы SDK openai выключены, чтобы таймаут не стоил 3 × LLM_TIMEOUT.
+Запасная модель (LLM_FALLBACK_MODEL) может жить у другого провайдера: LLM_FALLBACK_BASE_URL и
+LLM_FALLBACK_API_KEY; не заданы — она идёт к основному. На 503 (провайдер отвечает им сразу) модель
+переспрашиваем LLM_RETRIES раз с паузой LLM_RETRY_PAUSE; на таймаут — сразу к запасной: повтор того же
+молчащего провайдера стоил бы ещё LLM_TIMEOUT. Весь запрос с повторами и запасной укладывается в
+LLM_DEADLINE (30 с): каждая попытка получает не больше оставшегося времени. Повторы SDK openai выключены.
 Если API лежит (сеть, таймаут, лимит), LLM отключается на COOLDOWN_S секунд,
 чтобы на демо каждый ход не ждал таймаута, — агент продолжает на правилах.
 """
@@ -101,7 +104,10 @@ class LLM:
         self.base_url = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
         self.model = os.getenv("LLM_MODEL", "")
         self.fallback_model = os.getenv("LLM_FALLBACK_MODEL", "")
-        self.timeout = float(os.getenv("LLM_TIMEOUT", "25"))
+        self.fallback_base_url = os.getenv("LLM_FALLBACK_BASE_URL", "")
+        self.fallback_api_key = os.getenv("LLM_FALLBACK_API_KEY", "")
+        self.timeout = float(os.getenv("LLM_TIMEOUT", "12"))
+        self.deadline = float(os.getenv("LLM_DEADLINE", "30"))      # на один запрос со всеми повторами
         self.retries = min(2, max(0, int(os.getenv("LLM_RETRIES", "1"))))
         self.retry_pause = float(os.getenv("LLM_RETRY_PAUSE", "2"))
         # none | low | high — для «думающих» моделей; пусто — не отправляем, решает провайдер
@@ -111,6 +117,7 @@ class LLM:
         if self.mode not in MODES:
             self.mode = "tools"
         self._client = None
+        self._fallback_client = None
         self._down_until = 0.0
         self.last_error: str | None = None
 
@@ -123,6 +130,17 @@ class LLM:
         return self._client
 
     @property
+    def fallback_client(self):
+        """Клиент запасной модели: свой провайдер, если задан LLM_FALLBACK_BASE_URL, иначе основной."""
+        if not self.fallback_base_url:
+            return self.client
+        if self._fallback_client is None:
+            from openai import OpenAI
+            self._fallback_client = OpenAI(api_key=self.fallback_api_key or self.api_key,
+                                           base_url=self.fallback_base_url, timeout=self.timeout, max_retries=0)
+        return self._fallback_client
+
+    @property
     def available(self) -> bool:
         return self.enabled and time.monotonic() >= self._down_until
 
@@ -131,9 +149,15 @@ class LLM:
         if self.reasoning_effort:
             # не reasoning_effort: Polza его молча игнорирует, а рассуждения съедают max_tokens ответа
             kwargs["extra_body"] = {"reasoning": {"effort": self.reasoning_effort}}
-        for model in [m for m in (self.model, self.fallback_model) if m]:
+        until = time.monotonic() + self.deadline
+        targets = [(self.model, lambda: self.client)]
+        if self.fallback_model:
+            targets.append((self.fallback_model, lambda: self.fallback_client))
+        for model, get_client in targets:
+            if last_err is not None and until - time.monotonic() < 1:
+                break                      # лимит на ход исчерпан — дальше правила
             try:
-                return self._create(model, kwargs)
+                return self._create(get_client(), model, kwargs, until)
             except Exception as e:     # сеть, лимиты, неверная модель — пробуем запасную
                 # запасная не умеет режим, а основная просто перегружена: режим не понижаем, ждём основную
                 if last_err is not None and getattr(e, "status_code", None) in UNSUPPORTED \
@@ -144,14 +168,15 @@ class LLM:
                 log.warning("LLM %s failed: %s", model, e)
         raise last_err
 
-    def _create(self, model: str, kwargs: dict):
-        """Запрос к одной модели; на 503 и таймаут — повтор с паузой."""
+    def _create(self, client, model: str, kwargs: dict, until: float):
+        """Запрос к одной модели; на 503 — повтор с паузой, если до лимита хода хватает времени."""
         for attempt in range(self.retries + 1):
+            left = until - time.monotonic()
             try:
-                return self.client.chat.completions.create(model=model, **kwargs)
+                return client.chat.completions.create(model=model, timeout=max(1.0, min(self.timeout, left)), **kwargs)
             except Exception as e:
-                transient = getattr(e, "status_code", None) in TRANSIENT or "Timeout" in type(e).__name__
-                if not transient or attempt == self.retries:
+                last = attempt == self.retries or until - time.monotonic() - self.retry_pause < 2
+                if getattr(e, "status_code", None) not in TRANSIENT or last:
                     raise
                 log.warning("LLM %s: %s — повтор через %s с", model, e, self.retry_pause)
                 time.sleep(self.retry_pause)
